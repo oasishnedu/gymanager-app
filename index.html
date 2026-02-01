@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>구영초 교외체험학습 매니저</title>
+    
+    <!-- CSS 및 라이브러리 로드 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@0.474.0/dist/umd/lucide.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    
+    <style>
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+        body { font-family: 'Pretendard', -apple-system, sans-serif; background-color: #f8fafc; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background-color: #e2e8f0; border: 1px solid #e2e8f0; }
+        .calendar-cell { min-height: 120px; background-color: white; padding: 0.5rem; transition: background-color 0.2s; }
+        .calendar-cell:hover { background-color: #f1f5f9; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .modal-bg { background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); }
+        input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // 아이콘 컴포넌트
+        const Icon = ({ name, size = 20, className = "" }) => {
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            }, [name]);
+            return <i data-lucide={name} style={{ width: size, height: size }} className={className}></i>;
+        };
+
+        // 날짜 유틸리티
+        const formatDate = (date) => {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        };
+
+        const parseDate = (str) => {
+            const [y, m, d] = str.split('-').map(Number);
+            return new Date(y, m - 1, d);
+        };
+
+        // 초기 공휴일 데이터
+        const INITIAL_HOLIDAYS = [
+            { id: 1, date: '2026-01-01', name: '신정' },
+            { id: 2, date: '2026-03-01', name: '삼일절' },
+            { id: 3, date: '2026-05-05', name: '어린이날' },
+            { id: 4, date: '2026-06-06', name: '현충일' },
+            { id: 5, date: '2026-08-15', name: '광복절' },
+            { id: 6, date: '2026-10-03', name: '개천절' },
+            { id: 7, date: '2026-10-09', name: '한글날' },
+            { id: 8, date: '2026-12-25', name: '성탄절' }
+        ];
+
+        function App() {
+            const [viewDate, setViewDate] = useState(new Date());
+            const [students, setStudents] = useState(() => JSON.parse(localStorage.getItem('gy_students') || '[]'));
+            const [holidays, setHolidays] = useState(() => JSON.parse(localStorage.getItem('gy_holidays') || JSON.stringify(INITIAL_HOLIDAYS)));
+            const [selectedStudent, setSelectedStudent] = useState(null);
+            const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
+            
+            const [form, setForm] = useState({ 
+                name: '', 
+                startDate: '', 
+                endDate: '', 
+                place: '', 
+                deadline: '', 
+                isNeisDone: false 
+            });
+            const [newHoliday, setNewHoliday] = useState({ name: '', date: '' });
+
+            useEffect(() => localStorage.setItem('gy_students', JSON.stringify(students)), [students]);
+            useEffect(() => localStorage.setItem('gy_holidays', JSON.stringify(holidays)), [holidays]);
+
+            const calculateDeadline = (startDateStr, holidayList) => {
+                if (!startDateStr) return '';
+                let date = parseDate(startDateStr);
+                let count = 0;
+                while (count < 4) {
+                    date.setDate(date.getDate() - 1);
+                    const day = date.getDay();
+                    const isWeekend = (day === 0 || day === 6);
+                    const isHoliday = holidayList.some(h => h.date === formatDate(date));
+                    if (!isWeekend && !isHoliday) count++;
+                }
+                return formatDate(date);
+            };
+
+            const handleFormChange = (e) => {
+                const { name, value, type, checked } = e.target;
+                const nextValue = type === 'checkbox' ? checked : value;
+                const nextForm = { ...form, [name]: nextValue };
+                
+                if (name === 'startDate') {
+                    nextForm.deadline = calculateDeadline(value, holidays);
+                    if (!nextForm.endDate || nextForm.endDate < value) nextForm.endDate = value;
+                }
+                setForm(nextForm);
+            };
+
+            const addStudent = () => {
+                if (!form.name || !form.startDate) return;
+                const newEntry = { 
+                    ...form, 
+                    id: Date.now(), 
+                    isAppReceived: false, 
+                    isReportDone: false 
+                };
+                setStudents([...students, newEntry]);
+                setForm({ name: '', startDate: '', endDate: '', place: '', deadline: '', isNeisDone: false });
+            };
+
+            const deleteStudent = (id) => {
+                setStudents(students.filter(s => s.id !== id));
+                setSelectedStudent(null);
+            };
+
+            const updateStudentInfo = (id, key, value) => {
+                setStudents(prev => {
+                    const updated = prev.map(s => {
+                        if (s.id === id) {
+                            const newState = { ...s, [key]: value };
+                            if (key === 'isAppReceived' && !value) {
+                                newState.isReportDone = false;
+                            }
+                            if (selectedStudent && selectedStudent.id === id) {
+                                setSelectedStudent(newState);
+                            }
+                            return newState;
+                        }
+                        return s;
+                    });
+                    return updated;
+                });
+            };
+
+            const addHoliday = () => {
+                if (!newHoliday.name || !newHoliday.date) return;
+                const updated = [...holidays, { ...newHoliday, id: Date.now() }];
+                setHolidays(updated);
+                setNewHoliday({ name: '', date: '' });
+                if (form.startDate) setForm(f => ({ ...f, deadline: calculateDeadline(f.startDate, updated) }));
+            };
+
+            const deleteHoliday = (id) => {
+                const updated = holidays.filter(h => h.id !== id);
+                setHolidays(updated);
+                if (form.startDate) setForm(f => ({ ...f, deadline: calculateDeadline(f.startDate, updated) }));
+            };
+
+            const calendarDays = useMemo(() => {
+                const year = viewDate.getFullYear();
+                const month = viewDate.getMonth();
+                const firstDay = new Date(year, month, 1).getDay();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                const days = [];
+                const prevMonthLastDay = new Date(year, month, 0).getDate();
+                for (let i = firstDay - 1; i >= 0; i--) {
+                    days.push({ date: new Date(year, month - 1, prevMonthLastDay - i), current: false });
+                }
+                for (let i = 1; i <= daysInMonth; i++) {
+                    days.push({ date: new Date(year, month, i), current: true });
+                }
+                const remaining = 42 - days.length;
+                for (let i = 1; i <= remaining; i++) {
+                    days.push({ date: new Date(year, month + 1, i), current: false });
+                }
+                return days;
+            }, [viewDate]);
+
+            const getEventColorClass = (student) => {
+                if (student.isReportDone) return "bg-green-100 text-green-800 border-green-200 hover:bg-green-200";
+                if (student.isAppReceived) return "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100";
+                return "bg-slate-50 text-slate-600 border-slate-100 hover:bg-slate-100";
+            };
+
+            return (
+                <div className="min-h-screen flex flex-col">
+                    <header className="bg-indigo-600 text-white p-4 shadow-lg flex justify-between items-center sticky top-0 z-30">
+                        <div className="flex items-center gap-2 font-bold text-xl">
+                            <Icon name="graduation-cap" />
+                            <span>구영초 교외체험학습 매니저</span>
+                        </div>
+                    </header>
+
+                    <main className="p-4 flex-1 flex flex-col lg:flex-row gap-6 max-w-[1600px] mx-auto w-full">
+                        <aside className="w-full lg:w-80 flex flex-col gap-4">
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                                <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
+                                    <Icon name="plus-circle" className="text-indigo-600" />
+                                    <span>일정 추가</span>
+                                </h2>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 mb-1 block">학생 이름</label>
+                                        <input name="name" value={form.name} onChange={handleFormChange} placeholder="이름 입력" className="w-full p-3 bg-slate-50 rounded-xl border-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-500 mb-1 block">시작일</label>
+                                            <input type="date" name="startDate" value={form.startDate} onChange={handleFormChange} className="w-full p-2 bg-slate-50 rounded-lg text-sm border-none ring-1 ring-slate-200" />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-500 mb-1 block">종료일</label>
+                                            <input type="date" name="endDate" value={form.endDate} onChange={handleFormChange} className="w-full p-2 bg-slate-50 rounded-lg text-sm border-none ring-1 ring-slate-200" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 mb-1 block">내용 (장소)</label>
+                                        <input name="place" value={form.place} onChange={handleFormChange} placeholder="장소나 내용 입력" className="w-full p-3 bg-slate-50 rounded-xl border-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                    </div>
+                                    <label className="flex items-center gap-2 cursor-pointer p-1">
+                                        <input type="checkbox" name="isNeisDone" checked={form.isNeisDone} onChange={handleFormChange} className="w-4 h-4 accent-indigo-600" />
+                                        <span className="text-sm font-bold text-slate-600">NEIS 신청</span>
+                                    </label>
+
+                                    <div className="p-4 bg-red-50 rounded-xl border border-red-100 text-center">
+                                        <div className="text-xs font-bold text-red-400 mb-1 uppercase tracking-tighter">신청 마감일</div>
+                                        <div className="text-xl font-black text-red-600 tracking-tight">{form.deadline || '날짜를 선택하세요'}</div>
+                                    </div>
+                                    <button onClick={addStudent} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition active:scale-95 shadow-md">
+                                        등록하기
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col max-h-[400px]">
+                                <h2 className="font-bold text-lg mb-4">최근 등록 명단</h2>
+                                <div className="overflow-y-auto space-y-2 pr-1 scrollbar-hide">
+                                    {students.length === 0 ? <p className="text-slate-400 text-center py-8 text-sm">등록된 일정이 없습니다.</p> :
+                                    [...students].reverse().map(s => (
+                                        <div key={s.id} onClick={() => setSelectedStudent(s)} className="p-3 bg-slate-50 rounded-xl border border-transparent hover:border-indigo-100 cursor-pointer transition">
+                                            <div className="font-bold text-slate-700">{s.name}</div>
+                                            <div className="text-xs text-slate-400">{s.startDate.slice(5)} ~ {s.endDate.slice(5)}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </aside>
+
+                        <section className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+                            <div className="p-4 border-b flex justify-between items-center bg-slate-50">
+                                <div className="flex items-center gap-2">
+                                    <h2 className="text-xl font-black">{viewDate.getFullYear()}년 {viewDate.getMonth() + 1}월</h2>
+                                    <button 
+                                        onClick={() => setIsHolidayModalOpen(true)}
+                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                                        title="학사 일정(공휴일) 편집"
+                                    >
+                                        <Icon name="settings" size={18} />
+                                    </button>
+                                </div>
+                                <div className="flex gap-1">
+                                    <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} className="p-2 hover:bg-white rounded-lg border transition"><Icon name="chevron-left" size={16}/></button>
+                                    <button onClick={() => setViewDate(new Date())} className="px-3 text-sm font-bold border rounded-lg hover:bg-white">오늘</button>
+                                    <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} className="p-2 hover:bg-white rounded-lg border transition"><Icon name="chevron-right" size={16}/></button>
+                                </div>
+                            </div>
+                            
+                            {/* 요일 크기 키움 (text-[11px] -> text-[16px]) */}
+                            <div className="grid grid-cols-7 text-center py-3 bg-slate-50 text-[16px] font-bold text-slate-400 border-b">
+                                {['일','월','화','수','목','금','토'].map((d, i) => (
+                                    <div key={d} className={i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : ''}>{d}</div>
+                                ))}
+                            </div>
+
+                            <div className="calendar-grid flex-1">
+                                {calendarDays.map((day, idx) => {
+                                    const dStr = formatDate(day.date);
+                                    const dayHolidays = holidays.filter(h => h.date === dStr);
+                                    const dayEvents = students.filter(s => dStr >= s.startDate && dStr <= s.endDate);
+                                    const isSun = day.date.getDay() === 0;
+                                    const isSat = day.date.getDay() === 6;
+                                    const isHoliday = dayHolidays.length > 0;
+
+                                    return (
+                                        <div key={idx} className={`calendar-cell ${!day.current ? 'opacity-30' : ''}`}>
+                                            <div className="flex justify-between items-start mb-1">
+                                                {/* 날짜 숫자 크기 키움 (text-sm -> text-lg) */}
+                                                <span className={`text-lg font-bold ${(isSun || isHoliday) ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-slate-600'}`}>
+                                                    {day.date.getDate()}
+                                                </span>
+                                                {/* 공휴일 내용 크기 키움 (text-[9px] -> text-[13.5px]) */}
+                                                {dayHolidays.map(h => (
+                                                    <span key={h.id} className="text-[13.5px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold truncate max-w-[70px]">
+                                                        {h.name}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                            <div className="space-y-1">
+                                                {/* 학생 이름 크기 키움 (text-[11px] -> text-[14px]) */}
+                                                {dayEvents.map(e => (
+                                                    <div 
+                                                        key={e.id} 
+                                                        onClick={() => setSelectedStudent(e)} 
+                                                        className={`text-[14px] p-1 border rounded font-bold truncate cursor-pointer transition shadow-sm ${getEventColorClass(e)}`}
+                                                    >
+                                                        {e.name}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </section>
+                    </main>
+
+                    {/* 하단 저작권 문구 추가 */}
+                    <footer className="p-4 text-center">
+                        <span className="text-xs text-slate-400 font-medium tracking-tight">
+                            (c) 2026. Hannae Lee all rights reserved.
+                        </span>
+                    </footer>
+
+                    {selectedStudent && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-bg">
+                            <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl animate-in zoom-in duration-200">
+                                <div className="flex justify-between items-center mb-6">
+                                    <div className="flex-1 mr-4">
+                                        <input 
+                                            value={selectedStudent.name} 
+                                            onChange={(e) => updateStudentInfo(selectedStudent.id, 'name', e.target.value)}
+                                            className="text-2xl font-black bg-transparent border-none outline-none focus:ring-2 focus:ring-indigo-200 rounded px-1 w-full"
+                                        />
+                                        <input 
+                                            value={selectedStudent.place} 
+                                            onChange={(e) => updateStudentInfo(selectedStudent.id, 'place', e.target.value)}
+                                            placeholder="장소나 내용 입력"
+                                            className="text-sm text-slate-500 font-bold bg-transparent border-none outline-none focus:ring-2 focus:ring-indigo-100 rounded px-1 w-full"
+                                        />
+                                    </div>
+                                    <button onClick={() => setSelectedStudent(null)} className="p-2 hover:bg-slate-100 rounded-full flex-shrink-0"><Icon name="x" /></button>
+                                </div>
+                                <div className="space-y-3 mb-6">
+                                    <div className="p-3 bg-slate-50 rounded-xl">
+                                        <div className="text-[10px] font-bold text-slate-400 uppercase">기간</div>
+                                        <div className="font-bold flex gap-2 items-center">
+                                            <input type="date" value={selectedStudent.startDate} onChange={(e) => updateStudentInfo(selectedStudent.id, 'startDate', e.target.value)} className="bg-transparent border-none p-0 text-sm focus:ring-0" />
+                                            <span>~</span>
+                                            <input type="date" value={selectedStudent.endDate} onChange={(e) => updateStudentInfo(selectedStudent.id, 'endDate', e.target.value)} className="bg-transparent border-none p-0 text-sm focus:ring-0" />
+                                        </div>
+                                    </div>
+                                    
+                                    <div className={`flex items-center justify-between p-4 rounded-xl border transition-colors ${selectedStudent.isNeisDone ? 'bg-yellow-100 border-yellow-300 shadow-sm' : 'bg-slate-100 border-slate-200 opacity-60'}`}>
+                                        <div className="flex items-center gap-2">
+                                            <Icon name={selectedStudent.isNeisDone ? "check-circle" : "circle"} size={18} className={selectedStudent.isNeisDone ? "text-yellow-700" : "text-slate-400"} />
+                                            <span className={`font-bold text-sm ${selectedStudent.isNeisDone ? 'text-yellow-800' : 'text-slate-500'}`}>NEIS 신청</span>
+                                        </div>
+                                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${selectedStudent.isNeisDone ? 'bg-yellow-200 text-yellow-800' : 'bg-slate-200 text-slate-500'}`}>
+                                            {selectedStudent.isNeisDone ? '완료' : '미완료'}
+                                        </span>
+                                    </div>
+
+                                    <div className="p-3 bg-red-50 rounded-xl border border-red-100">
+                                        <div className="text-[10px] font-bold text-red-400 uppercase">신청 마감일</div>
+                                        <div className="font-black text-red-600 text-xl">{selectedStudent.deadline}</div>
+                                    </div>
+
+                                    <label className={`flex items-center justify-between p-4 rounded-xl cursor-pointer transition-colors border ${selectedStudent.isAppReceived ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-transparent'}`}>
+                                        <span className={`font-bold text-sm ${selectedStudent.isAppReceived ? 'text-indigo-700' : 'text-slate-600'}`}>신청서 접수</span>
+                                        <input type="checkbox" checked={selectedStudent.isAppReceived} onChange={() => updateStudentInfo(selectedStudent.id, 'isAppReceived', !selectedStudent.isAppReceived)} className="w-5 h-5 accent-indigo-600" />
+                                    </label>
+
+                                    <label className={`flex items-center justify-between p-4 rounded-xl transition-all border ${!selectedStudent.isAppReceived ? 'opacity-50 grayscale cursor-not-allowed bg-slate-100' : 'cursor-pointer hover:bg-green-50'} ${selectedStudent.isReportDone ? 'bg-green-100 border-green-200' : 'bg-slate-50 border-transparent'}`}>
+                                        <span className={`font-bold text-sm ${selectedStudent.isReportDone ? 'text-green-800' : 'text-slate-600'}`}>보고서 완료</span>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={selectedStudent.isReportDone} 
+                                            disabled={!selectedStudent.isAppReceived}
+                                            onChange={() => updateStudentInfo(selectedStudent.id, 'isReportDone', !selectedStudent.isReportDone)} 
+                                            className="w-5 h-5 accent-green-600 disabled:opacity-50" 
+                                        />
+                                    </label>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button onClick={() => deleteStudent(selectedStudent.id)} className="py-3 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-100 transition">기록 삭제</button>
+                                    <button onClick={() => setSelectedStudent(null)} className="py-3 bg-slate-900 text-white font-bold rounded-xl shadow-lg hover:bg-slate-800 transition">확인</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {isHolidayModalOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-bg">
+                            <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl flex flex-col max-h-[80vh]">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-xl font-bold">학사 일정 편집</h3>
+                                    <button onClick={() => setIsHolidayModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full"><Icon name="x" /></button>
+                                </div>
+                                
+                                <div className="flex gap-2 mb-4">
+                                    <input placeholder="행사명" value={newHoliday.name} onChange={e => setNewHoliday({...newHoliday, name: e.target.value})} className="flex-1 p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
+                                    <input type="date" value={newHoliday.date} onChange={e => setNewHoliday({...newHoliday, date: e.target.value})} className="p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
+                                    <button onClick={addHoliday} className="bg-indigo-600 text-white px-4 rounded-lg font-bold text-sm hover:bg-indigo-700 transition">추가</button>
+                                </div>
+
+                                <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-hide">
+                                    {holidays.sort((a,b) => a.date.localeCompare(b.date)).map(h => (
+                                        <div key={h.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                            <div>
+                                                <div className="font-bold text-slate-700">{h.name}</div>
+                                                <div className="text-[10px] text-slate-400">{h.date}</div>
+                                            </div>
+                                            <button onClick={() => deleteHoliday(h.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition">
+                                                <Icon name="trash-2" size={16} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                                
+                                <button onClick={() => setIsHolidayModalOpen(false)} className="mt-6 w-full py-3 bg-slate-900 text-white font-bold rounded-xl shadow-lg hover:bg-slate-800 transition">닫기</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
