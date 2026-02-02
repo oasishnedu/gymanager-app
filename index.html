@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>교외체험학습 매니저</title>
+    <title>구영초 교외체험학습 매니저</title>
     
     <!-- CSS 및 라이브러리 로드 -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -121,8 +121,8 @@
                 }));
                 const worksheet = XLSX.utils.json_to_sheet(excelData);
                 const workbook = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(workbook, worksheet, "체험학습현황");
-                XLSX.writeFile(workbook, `구영초_체험학습_리스트_${formatDate(new Date())}.xlsx`);
+                XLSX.utils.book_append_sheet(workbook, worksheet, "교외체험학습현황");
+                XLSX.writeFile(workbook, `구영초_교외체험학습_리스트_${formatDate(new Date())}.xlsx`);
             };
 
             const calculateDeadline = (startDateStr, holidayList) => {
@@ -222,7 +222,7 @@
                                     <input name="place" value={form.place} onChange={handleFormChange} placeholder="장소(내용)" className="w-full p-3 bg-slate-50 rounded-xl ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
                                     <div className="p-4 bg-red-50 rounded-xl border border-red-100 text-center">
                                         <div className="text-xs font-bold text-red-400 mb-1">신청 마감일</div>
-                                        <div className="text-xl font-black text-red-600">{form.deadline || '날짜 선택'}</div>
+                                        <div className="text-xl font-black text-red-600">{form.deadline || '자동 계산'}</div>
                                     </div>
                                     <button onClick={addStudent} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition active:scale-95 shadow-md">등록하기</button>
                                 </div>
@@ -354,4 +354,5 @@
     </script>
 </body>
 </html>
+
 
