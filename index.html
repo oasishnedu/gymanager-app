@@ -282,7 +282,7 @@
 
                                     <div className="p-4 bg-red-50 rounded-xl border border-red-100 text-center">
                                         <div className="text-xs font-bold text-red-400 mb-1 uppercase tracking-tighter">신청 마감일</div>
-                                        <div className="text-xl font-black text-red-600 tracking-tight">{form.deadline || '날짜를 선택하세요'}</div>
+                                        <div className="text-xl font-black text-red-600 tracking-tight">{form.deadline || '자동 계산'}</div>
                                     </div>
                                     <button onClick={addStudent} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition active:scale-95 shadow-md">
                                         등록하기
@@ -485,3 +485,4 @@
     </script>
 </body>
 </html>
+
