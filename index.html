@@ -100,7 +100,7 @@
             const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
             
             const [form, setForm] = useState({ 
-                name: '', startDate: '', endDate: '', place: '', deadline: '', isNeisDone: false 
+                name: '', startDate: '', endDate: '', place: '', deadline: '', isNeisDone: false, isNeisRequested: false
             });
             const [newHoliday, setNewHoliday] = useState({ name: '', date: '' });
 
@@ -115,7 +115,8 @@
                     '종료일': s.endDate,
                     '장소': s.place,
                     '신청 마감일': s.deadline,
-                    'NEIS 신청': s.isNeisDone ? '완료' : '미완료',
+                    'NEIS 신청 필요': s.isNeisRequested ? '예' : '아니오',
+                    'NEIS 신청 완료': s.isNeisDone ? '완료' : '미완료',
                     '신청서 접수': s.isAppReceived ? '완료' : '미완료',
                     '보고서 완료': s.isReportDone ? '완료' : '미완료'
                 }));
@@ -125,12 +126,10 @@
                 XLSX.writeFile(workbook, `체험학습_현황_${formatDate(new Date())}.xlsx`);
             };
 
-            // 주말, 공휴일 제외 3일 전 계산 로직
             const calculateDeadline = (startDateStr, holidayList) => {
                 if (!startDateStr) return '';
                 let date = parseDate(startDateStr);
                 let count = 0;
-                // 3일 전을 찾기 위해 휴일을 건너뛰며 카운트
                 while (count < 3) {
                     date.setDate(date.getDate() - 1);
                     const day = date.getDay();
@@ -154,8 +153,15 @@
 
             const addStudent = () => {
                 if (!form.name || !form.startDate) return;
-                setStudents([...students, { ...form, id: Date.now(), isAppReceived: false, isReportDone: false }]);
-                setForm({ name: '', startDate: '', endDate: '', place: '', deadline: '', isNeisDone: false });
+                // isNeisRequested는 팝업 표시 여부를 결정함
+                setStudents([...students, { 
+                    ...form, 
+                    id: Date.now(), 
+                    isNeisRequested: form.isNeisDone, // 처음 체크했다면 팝업에서도 계속 관리함
+                    isAppReceived: false, 
+                    isReportDone: false 
+                }]);
+                setForm({ name: '', startDate: '', endDate: '', place: '', deadline: '', isNeisDone: false, isNeisRequested: false });
             };
 
             const deleteStudent = (id) => {
@@ -207,7 +213,7 @@
                         </div>
                         <button onClick={downloadExcel} className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold transition shadow-md active:scale-95">
                             <Icon name="file-spreadsheet" size={18} />
-                            <span className="hidden sm:inline">엑셀 다운로드</span>
+                            <span className="hidden sm:inline">목록 다운로드</span>
                         </button>
                     </header>
 
@@ -226,15 +232,14 @@
                                     </div>
                                     <input name="place" value={form.place} onChange={handleFormChange} placeholder="장소 및 내용" className="w-full p-3 bg-slate-50 rounded-xl ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
                                     
-                                    {/* NEIS 신청 체크박스 추가 */}
                                     <label className="flex items-center gap-2 px-1 cursor-pointer">
                                         <input type="checkbox" name="isNeisDone" checked={form.isNeisDone} onChange={handleFormChange} className="w-4 h-4 accent-indigo-600" />
-                                        <span className="text-sm font-bold text-slate-600">NEIS 신청 완료</span>
+                                        <span className="text-sm font-bold text-slate-600">NEIS 신청</span>
                                     </label>
 
                                     <div className="p-4 bg-red-50 rounded-xl border border-red-100 text-center">
                                         <div className="text-[10px] font-bold text-red-400 mb-1">주말, 공휴일 미포함 3일 전</div>
-                                        <div className="text-xl font-black text-red-600 tracking-tight">{form.deadline || '날짜 선택'}</div>
+                                        <div className="text-xl font-black text-red-600 tracking-tight">{form.deadline || '자동 계산'}</div>
                                     </div>
                                     <button onClick={addStudent} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition active:scale-95 shadow-md">일정 등록</button>
                                 </div>
@@ -323,7 +328,6 @@
                                     <button onClick={() => setSelectedStudent(null)} className="p-2 hover:bg-slate-100 rounded-full transition"><Icon name="x" /></button>
                                 </div>
                                 <div className="space-y-3 mb-6">
-                                    {/* 팝업창 기간 표시 추가 */}
                                     <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                                         <div className="text-[10px] font-bold text-slate-400">체험학습 기간</div>
                                         <div className="font-bold text-slate-700">{selectedStudent.startDate} ~ {selectedStudent.endDate}</div>
@@ -334,17 +338,42 @@
                                         <div className="font-black text-red-600 text-xl">{selectedStudent.deadline}</div>
                                     </div>
 
-                                    <label className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition ${selectedStudent.isNeisDone ? 'bg-yellow-100 text-yellow-800 border-yellow-200' : 'bg-slate-50 border-transparent opacity-60'}`}>
-                                        <span className="font-bold text-sm">NEIS 신청 완료</span>
-                                        <input type="checkbox" checked={selectedStudent.isNeisDone} onChange={() => updateStudentInfo(selectedStudent.id, 'isNeisDone', !selectedStudent.isNeisDone)} className="w-5 h-5 accent-yellow-600" />
-                                    </label>
-                                    <label className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition ${selectedStudent.isAppReceived ? 'bg-indigo-50 text-indigo-800 border-indigo-200' : 'bg-slate-50 border-transparent opacity-60'}`}>
+                                    {/* 1단계: NEIS 신청 (등록 시 체크했을 때만 표시됨) */}
+                                    {selectedStudent.isNeisRequested && (
+                                        <label className={`flex items-center justify-between p-4 rounded-xl border transition ${selectedStudent.isNeisDone ? 'bg-yellow-100 text-yellow-800 border-yellow-200' : 'bg-slate-50 border-transparent opacity-60'} ${selectedStudent.isAppReceived ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                                            <span className="font-bold text-sm">NEIS 신청 완료</span>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={selectedStudent.isNeisDone} 
+                                                disabled={selectedStudent.isAppReceived}
+                                                onChange={() => updateStudentInfo(selectedStudent.id, 'isNeisDone', !selectedStudent.isNeisDone)} 
+                                                className="w-5 h-5 accent-yellow-600 cursor-pointer disabled:cursor-not-allowed" 
+                                            />
+                                        </label>
+                                    )}
+
+                                    {/* 2단계: 신청서 접수 (NEIS 신청이 필요 없거나, NEIS 신청이 완료되었을 때 가능) */}
+                                    <label className={`flex items-center justify-between p-4 rounded-xl border transition ${selectedStudent.isAppReceived ? 'bg-indigo-50 text-indigo-800 border-indigo-200' : 'bg-slate-50 border-transparent opacity-60'} ${(selectedStudent.isNeisRequested && !selectedStudent.isNeisDone) || selectedStudent.isReportDone ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                                         <span className="font-bold text-sm">신청서 접수 완료</span>
-                                        <input type="checkbox" checked={selectedStudent.isAppReceived} onChange={() => updateStudentInfo(selectedStudent.id, 'isAppReceived', !selectedStudent.isAppReceived)} className="w-5 h-5 accent-indigo-600" />
+                                        <input 
+                                            type="checkbox" 
+                                            checked={selectedStudent.isAppReceived} 
+                                            disabled={(selectedStudent.isNeisRequested && !selectedStudent.isNeisDone) || selectedStudent.isReportDone}
+                                            onChange={() => updateStudentInfo(selectedStudent.id, 'isAppReceived', !selectedStudent.isAppReceived)} 
+                                            className="w-5 h-5 accent-indigo-600 cursor-pointer disabled:cursor-not-allowed" 
+                                        />
                                     </label>
-                                    <label className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition ${selectedStudent.isReportDone ? 'bg-green-100 text-green-800 border-green-200' : 'bg-slate-50 border-transparent opacity-60'}`}>
+
+                                    {/* 3단계: 보고서 완료 (신청서가 접수되었을 때만 가능) */}
+                                    <label className={`flex items-center justify-between p-4 rounded-xl border transition ${selectedStudent.isReportDone ? 'bg-green-100 text-green-800 border-green-200' : 'bg-slate-50 border-transparent opacity-60'} !selectedStudent.isAppReceived ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                                         <span className="font-bold text-sm">보고서 완료</span>
-                                        <input type="checkbox" checked={selectedStudent.isReportDone} onChange={() => updateStudentInfo(selectedStudent.id, 'isReportDone', !selectedStudent.isReportDone)} className="w-5 h-5 accent-green-600" />
+                                        <input 
+                                            type="checkbox" 
+                                            checked={selectedStudent.isReportDone} 
+                                            disabled={!selectedStudent.isAppReceived}
+                                            onChange={() => updateStudentInfo(selectedStudent.id, 'isReportDone', !selectedStudent.isReportDone)} 
+                                            className="w-5 h-5 accent-green-600 cursor-pointer disabled:cursor-not-allowed" 
+                                        />
                                     </label>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
