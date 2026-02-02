@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>구영초 교외체험학습 매니저</title>
+    <title>교외체험학습 매니저</title>
     
     <!-- CSS 및 라이브러리 로드 -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -11,6 +11,7 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@0.474.0/dist/umd/lucide.min.js"></script>
+    <!-- 엑셀 파일 생성을 위한 SheetJS 라이브러리 추가 -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     
     <style>
@@ -23,7 +24,6 @@
         .modal-bg { background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); }
         input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; }
     </style>
-    <link rel="manifest" href="manifest.json">
 </head>
 <body>
     <div id="root"></div>
@@ -52,22 +52,38 @@
             return new Date(y, m - 1, d);
         };
 
-        // 초기 공휴일 데이터
+        // 2026년 대한민국 공휴일 데이터
         const INITIAL_HOLIDAYS = [
             { id: 1, date: '2026-01-01', name: '신정' },
-            { id: 2, date: '2026-03-01', name: '삼일절' },
-            { id: 3, date: '2026-05-05', name: '어린이날' },
-            { id: 4, date: '2026-06-06', name: '현충일' },
-            { id: 5, date: '2026-08-15', name: '광복절' },
-            { id: 6, date: '2026-10-03', name: '개천절' },
-            { id: 7, date: '2026-10-09', name: '한글날' },
-            { id: 8, date: '2026-12-25', name: '성탄절' }
+            { id: 2, date: '2026-02-16', name: '설날 연휴' },
+            { id: 3, date: '2026-02-17', name: '설날' },
+            { id: 4, date: '2026-02-18', name: '설날 연휴' },
+            { id: 5, date: '2026-03-01', name: '삼일절' },
+            { id: 6, date: '2026-03-02', name: '대체공휴일' },
+            { id: 7, date: '2026-05-04', name: '재량휴업일' },
+            { id: 8, date: '2026-05-05', 'name': '어린이날' },
+            { id: 9, date: '2026-05-24', 'name': '부처님오신날' },
+            { id: 10, date: '2026-05-25', 'name': '대체공휴일' },
+            { id: 11, date: '2026-06-06', 'name': '현충일' },
+            { id: 12, date: '2026-07-17', 'name': '제헌절' },
+            { id: 13, date: '2026-08-15', 'name': '광복절' },
+            { id: 14, date: '2026-08-17', 'name': '대체공휴일' },
+            { id: 15, date: '2026-09-24', 'name': '추석 연휴' },
+            { id: 16, date: '2026-09-25', 'name': '추석' },
+            { id: 17, date: '2026-09-26', 'name': '추석 연휴' },
+            { id: 18, date: '2026-10-03', 'name': '개천절' },
+            { id: 19, date: '2026-10-05', 'name': '대체공휴일' },
+            { id: 20, date: '2026-10-09', 'name': '한글날' },
+            { id: 21, date: '2026-12-25', 'name': '성탄절' }
         ];
 
         function App() {
             const [viewDate, setViewDate] = useState(new Date());
             const [students, setStudents] = useState(() => JSON.parse(localStorage.getItem('gy_students') || '[]'));
-            const [holidays, setHolidays] = useState(() => JSON.parse(localStorage.getItem('gy_holidays') || JSON.stringify(INITIAL_HOLIDAYS)));
+            const [holidays, setHolidays] = useState(() => {
+                const saved = localStorage.getItem('gy_holidays');
+                return saved ? JSON.parse(saved) : INITIAL_HOLIDAYS;
+            });
             const [selectedStudent, setSelectedStudent] = useState(null);
             const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
             
@@ -83,6 +99,35 @@
 
             useEffect(() => localStorage.setItem('gy_students', JSON.stringify(students)), [students]);
             useEffect(() => localStorage.setItem('gy_holidays', JSON.stringify(holidays)), [holidays]);
+
+            // 엑셀 다운로드 기능
+            const downloadExcel = () => {
+                if (students.length === 0) {
+                    return;
+                }
+
+                // 엑셀에 들어갈 데이터 가공
+                const excelData = students.map(s => ({
+                    '학생 이름': s.name,
+                    '시작일': s.startDate,
+                    '종료일': s.endDate,
+                    '장소': s.place,
+                    '신청 마감일': s.deadline,
+                    'NEIS 신청 여부': s.isNeisDone ? '완료' : '미완료',
+                    '신청서 접수': s.isAppReceived ? '완료' : '미완료',
+                    '보고서 제출': s.isReportDone ? '완료' : '미완료'
+                }));
+
+                // 워크시트 생성
+                const worksheet = XLSX.utils.json_to_sheet(excelData);
+                // 워크북 생성
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, "체험학습목록");
+
+                // 파일 다운로드
+                const fileName = `체험학습_관리_목록_${formatDate(new Date())}.xlsx`;
+                XLSX.writeFile(workbook, fileName);
+            };
 
             const calculateDeadline = (startDateStr, holidayList) => {
                 if (!startDateStr) return '';
@@ -193,6 +238,15 @@
                             <Icon name="graduation-cap" />
                             <span>구영초 교외체험학습 매니저</span>
                         </div>
+                        {/* 목록 다운로드 버튼 추가 */}
+                        <button 
+                            onClick={downloadExcel}
+                            className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold transition shadow-md active:scale-95"
+                            disabled={students.length === 0}
+                        >
+                            <Icon name="file-spreadsheet" size={18} />
+                            <span className="hidden sm:inline">목록 다운로드</span>
+                        </button>
                     </header>
 
                     <main className="p-4 flex-1 flex flex-col lg:flex-row gap-6 max-w-[1600px] mx-auto w-full">
@@ -228,10 +282,10 @@
 
                                     <div className="p-4 bg-red-50 rounded-xl border border-red-100 text-center">
                                         <div className="text-xs font-bold text-red-400 mb-1 uppercase tracking-tighter">신청 마감일</div>
-                                        <div className="text-xl font-black text-red-600 tracking-tight">{form.deadline || '날짜 자동 계산'}</div>
+                                        <div className="text-xl font-black text-red-600 tracking-tight">{form.deadline || '날짜를 선택하세요'}</div>
                                     </div>
                                     <button onClick={addStudent} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition active:scale-95 shadow-md">
-                                        등록
+                                        등록하기
                                     </button>
                                 </div>
                             </div>
@@ -269,7 +323,6 @@
                                 </div>
                             </div>
                             
-                            {/* 요일 크기 키움 (text-[11px] -> text-[16px]) */}
                             <div className="grid grid-cols-7 text-center py-3 bg-slate-50 text-[16px] font-bold text-slate-400 border-b">
                                 {['일','월','화','수','목','금','토'].map((d, i) => (
                                     <div key={d} className={i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : ''}>{d}</div>
@@ -288,19 +341,18 @@
                                     return (
                                         <div key={idx} className={`calendar-cell ${!day.current ? 'opacity-30' : ''}`}>
                                             <div className="flex justify-between items-start mb-1">
-                                                {/* 날짜 숫자 크기 키움 (text-sm -> text-lg) */}
                                                 <span className={`text-lg font-bold ${(isSun || isHoliday) ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-slate-600'}`}>
                                                     {day.date.getDate()}
                                                 </span>
-                                                {/* 공휴일 내용 크기 키움 (text-[9px] -> text-[13.5px]) */}
-                                                {dayHolidays.map(h => (
-                                                    <span key={h.id} className="text-[13.5px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold truncate max-w-[70px]">
-                                                        {h.name}
-                                                    </span>
-                                                ))}
+                                                <div className="flex flex-col items-end gap-0.5">
+                                                    {dayHolidays.map(h => (
+                                                        <span key={h.id} className={`text-[12px] px-1.5 py-0.5 rounded font-bold truncate max-w-[80px] ${h.name.includes('재량') ? 'bg-orange-100 text-orange-600' : 'bg-red-100 text-red-600'}`}>
+                                                            {h.name}
+                                                        </span>
+                                                    ))}
+                                                </div>
                                             </div>
                                             <div className="space-y-1">
-                                                {/* 학생 이름 크기 키움 (text-[11px] -> text-[14px]) */}
                                                 {dayEvents.map(e => (
                                                     <div 
                                                         key={e.id} 
@@ -318,7 +370,6 @@
                         </section>
                     </main>
 
-                    {/* 하단 저작권 문구 추가 */}
                     <footer className="p-4 text-center">
                         <span className="text-xs text-slate-400 font-medium tracking-tight">
                             (c) 2026. Hannae Lee all rights reserved.
@@ -433,6 +484,4 @@
         root.render(<App />);
     </script>
 </body>
-
 </html>
-
