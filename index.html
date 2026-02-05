@@ -21,8 +21,9 @@
             touch-action: manipulation;
         }
         
+        /* 모바일 환경 대응을 위한 스크롤 영역 설정 */
         .main-container {
-            height: calc(100vh - 64px);
+            height: calc(100vh - 64px); /* 헤더 제외 높이 */
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
         }
@@ -38,7 +39,7 @@
             gap: 1px; 
             background-color: #e2e8f0; 
             border: 1px solid #e2e8f0; 
-            min-width: 700px;
+            min-width: 700px; /* 모바일에서 가로 스크롤을 발생시켜서 칸이 찌그러지지 않게 함 */
         }
 
         .calendar-cell { 
@@ -52,8 +53,10 @@
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .modal-bg { background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); }
         
+        /* 폼 요소 모바일 최적화 */
         input, button { font-size: 16px !important; }
     </style>
+    <link rel="manifest" href="manifest.json">
 </head>
 <body>
     <div id="root"></div>
@@ -61,6 +64,7 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
+        // 아이콘 컴포넌트
         const Icon = ({ name, size = 20, className = "" }) => {
             useEffect(() => {
                 if (window.lucide) window.lucide.createIcons();
@@ -68,6 +72,7 @@
             return <i data-lucide={name} style={{ width: size, height: size }} className={className}></i>;
         };
 
+        // 날짜 유틸리티
         const formatDate = (date) => {
             const y = date.getFullYear();
             const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -81,7 +86,10 @@
             return new Date(y, m - 1, d);
         };
 
+        // 데이터 버전
         const DATA_VERSION = "2026-v4";
+
+        // 2026년~2027년 대한민국 공휴일 데이터
         const INITIAL_HOLIDAYS = [
             { id: 1, date: '2026-01-01', name: '신정' },
             { id: 2, date: '2026-02-16', name: '설날 연휴' },
@@ -103,17 +111,18 @@
             { id: 18, date: '2026-10-03', name: '개천절' },
             { id: 19, date: '2026-10-05', name: '대체공휴일' },
             { id: 20, date: '2026-10-09', name: '한글날' },
-            { id: 21, date: '2026-11-24', name: '재량휴업일' },
-            { id: 22, date: '2026-12-25', name: '성탄절' },
-            { id: 23, date: '2027-01-01', name: '신정' }
+            { id: 21, date: '2026-12-25', name: '성탄절' },
+            { id: 22, date: '2027-01-01', name: '신정' }
         ];
 
         function App() {
             const [viewDate, setViewDate] = useState(new Date());
             const [students, setStudents] = useState(() => JSON.parse(localStorage.getItem('gy_students') || '[]'));
+            
             const [holidays, setHolidays] = useState(() => {
                 const savedVersion = localStorage.getItem('gy_data_version');
                 const savedHolidays = localStorage.getItem('gy_holidays');
+                
                 if (savedVersion !== DATA_VERSION || !savedHolidays) {
                     localStorage.setItem('gy_data_version', DATA_VERSION);
                     localStorage.setItem('gy_holidays', JSON.stringify(INITIAL_HOLIDAYS));
@@ -124,8 +133,9 @@
 
             const [selectedStudent, setSelectedStudent] = useState(null);
             const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
+            
             const [form, setForm] = useState({ 
-                name: '', startDate: '', endDate: '', place: '', deadline: '', reportDeadline: '', isNeisDone: false
+                name: '', startDate: '', endDate: '', place: '', deadline: '', reportDeadline: '', isNeisDone: false, isNeisRequested: false
             });
             const [newHoliday, setNewHoliday] = useState({ name: '', date: '' });
 
@@ -141,21 +151,21 @@
                     '장소': s.place,
                     '신청 마감일': s.deadline,
                     '보고 마감일': s.reportDeadline,
-                    'NEIS 완료': s.isNeisDone ? 'O' : 'X',
-                    '신청서 접수': s.isAppReceived ? 'O' : 'X',
-                    '보고서 완료': s.isReportDone ? 'O' : 'X'
+                    'NEIS 신청 여부': s.isNeisDone ? '완료' : '미완료',
+                    '신청서 접수': s.isAppReceived ? '완료' : '미완료',
+                    '보고서 완료': s.isReportDone ? '완료' : '미완료'
                 }));
                 const worksheet = XLSX.utils.json_to_sheet(excelData);
                 const workbook = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(workbook, worksheet, "현황");
-                XLSX.writeFile(workbook, `체험학습_현황.xlsx`);
+                XLSX.utils.book_append_sheet(workbook, worksheet, "체험학습리스트");
+                XLSX.writeFile(workbook, `체험학습_현황_${formatDate(new Date())}.xlsx`);
             };
 
             const calculateDeadline = (startDateStr, holidayList) => {
                 if (!startDateStr) return '';
                 let date = parseDate(startDateStr);
                 let count = 0;
-                while (count < 4) {
+                while (count < 3) {
                     date.setDate(date.getDate() - 1);
                     const day = date.getDay();
                     const isWeekend = (day === 0 || day === 6);
@@ -165,6 +175,7 @@
                 return formatDate(date);
             };
 
+            // 보고 마감일 계산 (종료일 + 7일)
             const calculateReportDeadline = (endDateStr) => {
                 if (!endDateStr) return '';
                 let date = parseDate(endDateStr);
@@ -184,9 +195,11 @@
                         nextForm.reportDeadline = calculateReportDeadline(value);
                     }
                 }
+                
                 if (name === 'endDate') {
                     nextForm.reportDeadline = calculateReportDeadline(value);
                 }
+
                 setForm(nextForm);
             };
 
@@ -199,16 +212,12 @@
                     isAppReceived: false, 
                     isReportDone: false 
                 }]);
-                setForm({ name: '', startDate: '', endDate: '', place: '', deadline: '', reportDeadline: '', isNeisDone: false });
+                setForm({ name: '', startDate: '', endDate: '', place: '', deadline: '', reportDeadline: '', isNeisDone: false, isNeisRequested: false });
             };
 
             const deleteStudent = (id) => {
                 setStudents(students.filter(s => s.id !== id));
                 setSelectedStudent(null);
-            };
-
-            const deleteHoliday = (id) => {
-                setHolidays(holidays.filter(h => h.id !== id));
             };
 
             const updateStudentInfo = (id, key, value) => {
@@ -223,6 +232,13 @@
                 const updated = [...holidays, { ...newHoliday, id: Date.now() }];
                 setHolidays(updated);
                 setNewHoliday({ name: '', date: '' });
+                if (form.startDate) setForm(f => ({ ...f, deadline: calculateDeadline(f.startDate, updated) }));
+            };
+
+            const deleteHoliday = (id) => {
+                const updated = holidays.filter(h => h.id !== id);
+                setHolidays(updated);
+                if (form.startDate) setForm(f => ({ ...f, deadline: calculateDeadline(f.startDate, updated) }));
             };
 
             const calendarDays = useMemo(() => {
@@ -244,11 +260,11 @@
                     <header className="bg-indigo-600 text-white p-4 shadow-lg flex justify-between items-center flex-none">
                         <div className="flex items-center gap-2 font-bold text-lg sm:text-xl">
                             <Icon name="graduation-cap" />
-                            <span className="truncate">교외체험학습 매니저</span>
+                            <span className="truncate">구영초 체험학습 매니저</span>
                         </div>
                         <button onClick={downloadExcel} className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs sm:text-sm font-bold transition shadow-md active:scale-95">
                             <Icon name="file-spreadsheet" size={16} />
-                            <span className="hidden xs:inline">엑셀 저장</span>
+                            <span className="hidden xs:inline">다운로드</span>
                         </button>
                     </header>
 
@@ -262,16 +278,14 @@
                                     </h2>
                                     <div className="space-y-3">
                                         <input name="name" value={form.name} onChange={handleFormChange} placeholder="학생 이름" className="w-full p-3 bg-slate-50 rounded-xl ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
-                                        
-                                        {/* 시작일, 종료일 레이블 크기를 text-sm(NEIS 문구와 동일)으로 조정 */}
                                         <div className="grid grid-cols-2 gap-2">
                                             <div>
-                                                <label className="text-sm text-slate-500 ml-1 font-bold">시작일</label>
-                                                <input type="date" name="startDate" value={form.startDate} onChange={handleFormChange} className="w-full p-2 bg-slate-50 rounded-lg text-sm ring-1 ring-slate-200 mt-0.5" />
+                                                <label className="text-[10px] text-slate-400 ml-1">시작일</label>
+                                                <input type="date" name="startDate" value={form.startDate} onChange={handleFormChange} className="w-full p-2 bg-slate-50 rounded-lg text-sm ring-1 ring-slate-200" />
                                             </div>
                                             <div>
-                                                <label className="text-sm text-slate-500 ml-1 font-bold">종료일</label>
-                                                <input type="date" name="endDate" value={form.endDate} onChange={handleFormChange} className="w-full p-2 bg-slate-50 rounded-lg text-sm ring-1 ring-slate-200 mt-0.5" />
+                                                <label className="text-[10px] text-slate-400 ml-1">종료일</label>
+                                                <input type="date" name="endDate" value={form.endDate} onChange={handleFormChange} className="w-full p-2 bg-slate-50 rounded-lg text-sm ring-1 ring-slate-200" />
                                             </div>
                                         </div>
                                         <input name="place" value={form.place} onChange={handleFormChange} placeholder="장소 및 내용" className="w-full p-3 bg-slate-50 rounded-xl ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
@@ -281,19 +295,14 @@
                                             <span className="text-sm font-bold text-slate-600">NEIS 신청 완료</span>
                                         </label>
 
-                                        {/* 마감일 레이블 크기를 text-sm으로 조정 및 나란히 배치 */}
                                         <div className="grid grid-cols-2 gap-2">
                                             <div className="p-2 bg-red-50 rounded-xl border border-red-100 text-center">
-                                                <div className="text-sm font-bold text-red-500 mb-1 whitespace-nowrap">신청 마감일</div>
-                                                <div className="text-xl font-black text-red-600 leading-tight">
-                                                    {form.deadline ? form.deadline.slice(5) : '-'}
-                                                </div>
+                                                <div className="text-[9px] font-bold text-red-400 mb-1">신청 마감일</div>
+                                                <div className="text-sm font-black text-red-600">{form.deadline || '-'}</div>
                                             </div>
                                             <div className="p-2 bg-blue-50 rounded-xl border border-blue-100 text-center">
-                                                <div className="text-sm font-bold text-blue-500 mb-1 whitespace-nowrap">보고 마감일</div>
-                                                <div className="text-xl font-black text-blue-600 leading-tight">
-                                                    {form.reportDeadline ? form.reportDeadline.slice(5) : '-'}
-                                                </div>
+                                                <div className="text-[9px] font-bold text-blue-400 mb-1">보고 마감일</div>
+                                                <div className="text-sm font-black text-blue-600">{form.reportDeadline || '-'}</div>
                                             </div>
                                         </div>
                                         <button onClick={addStudent} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition active:scale-95 shadow-md mt-2">일정 등록</button>
@@ -301,7 +310,7 @@
                                 </div>
                                 
                                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col max-h-[300px]">
-                                    <h2 className="font-bold text-lg mb-4">최근 등록 리스트</h2>
+                                    <h2 className="font-bold text-lg mb-4">최근 등록</h2>
                                     <div className="overflow-y-auto space-y-2 pr-1 scrollbar-hide">
                                         {students.length === 0 ? <p className="text-slate-400 text-center py-8 text-sm">등록된 일정이 없습니다.</p> :
                                         [...students].reverse().map(s => (
@@ -371,11 +380,14 @@
                                 </div>
                             </section>
                         </div>
+                        <footer className="p-6 text-center text-slate-400 text-xs font-medium">
+                            <p>© 2026. Hannae Lee. All rights reserved.</p>
+                        </footer>
                     </main>
 
                     {selectedStudent && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-bg">
-                            <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl overflow-y-auto max-h-[95vh]">
+                            <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl overflow-y-auto max-h-[90vh]">
                                 <div className="flex justify-between items-center mb-6">
                                     <div className="flex-1">
                                         <h3 className="text-2xl font-black">{selectedStudent.name}</h3>
@@ -383,61 +395,61 @@
                                     </div>
                                     <button onClick={() => setSelectedStudent(null)} className="p-2 hover:bg-slate-100 rounded-full transition"><Icon name="x" /></button>
                                 </div>
-                                
-                                <div className="space-y-4 mb-6">
-                                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                        <div className="text-sm font-bold text-slate-400 mb-1">체험학습 기간</div>
-                                        <div className="font-bold text-slate-700 text-lg">{selectedStudent.startDate} ~ {selectedStudent.endDate}</div>
+                                <div className="space-y-3 mb-6">
+                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                        <div className="text-[10px] font-bold text-slate-400">체험학습 기간</div>
+                                        <div className="font-bold text-slate-700">{selectedStudent.startDate} ~ {selectedStudent.endDate}</div>
                                     </div>
                                     
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="p-4 bg-red-50 rounded-2xl border border-red-100 text-center">
-                                            <div className="text-sm font-bold text-red-400 mb-1">신청 마감일</div>
-                                            <div className="font-black text-2xl text-red-600 leading-none">{selectedStudent.deadline.slice(5)}</div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="p-3 bg-red-50 rounded-xl border border-red-100">
+                                            <div className="text-[10px] font-bold text-red-400">신청 마감일</div>
+                                            <div className="font-black text-red-600 text-sm sm:text-base">{selectedStudent.deadline}</div>
                                         </div>
-                                        <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 text-center">
-                                            <div className="text-sm font-bold text-blue-400 mb-1">보고 마감일</div>
-                                            <div className="font-black text-2xl text-blue-600 leading-none">{selectedStudent.reportDeadline.slice(5)}</div>
+                                        <div className="p-3 bg-blue-50 rounded-xl border border-blue-100">
+                                            <div className="text-[10px] font-bold text-blue-400">보고 마감일</div>
+                                            <div className="font-black text-blue-600 text-sm sm:text-base">{selectedStudent.reportDeadline}</div>
                                         </div>
                                     </div>
 
-                                    <div className="space-y-2">
-                                        {selectedStudent.isNeisRequested && (
-                                            <label className={`flex items-center justify-between p-4 rounded-xl border transition ${selectedStudent.isNeisDone ? 'bg-yellow-100 text-yellow-800 border-yellow-200 shadow-inner' : 'bg-slate-50 border-transparent opacity-60'}`}>
-                                                <span className="font-bold text-sm">NEIS 신청 완료</span>
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={selectedStudent.isNeisDone} 
-                                                    onChange={() => updateStudentInfo(selectedStudent.id, 'isNeisDone', !selectedStudent.isNeisDone)} 
-                                                    className="w-6 h-6 accent-yellow-600 cursor-pointer" 
-                                                />
-                                            </label>
-                                        )}
-
-                                        <label className={`flex items-center justify-between p-4 rounded-xl border transition ${selectedStudent.isAppReceived ? 'bg-indigo-50 text-indigo-800 border-indigo-200 shadow-inner' : 'bg-slate-50 border-transparent opacity-60'}`}>
-                                            <span className="font-bold text-sm">신청서 접수 완료</span>
+                                    {selectedStudent.isNeisRequested && (
+                                        <label className={`flex items-center justify-between p-4 rounded-xl border transition ${selectedStudent.isNeisDone ? 'bg-yellow-100 text-yellow-800 border-yellow-200' : 'bg-slate-50 border-transparent opacity-60'} ${selectedStudent.isAppReceived ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                                            <span className="font-bold text-sm">NEIS 신청 완료</span>
                                             <input 
                                                 type="checkbox" 
-                                                checked={selectedStudent.isAppReceived} 
-                                                onChange={() => updateStudentInfo(selectedStudent.id, 'isAppReceived', !selectedStudent.isAppReceived)} 
-                                                className="w-6 h-6 accent-indigo-600 cursor-pointer" 
+                                                checked={selectedStudent.isNeisDone} 
+                                                disabled={selectedStudent.isAppReceived}
+                                                onChange={() => updateStudentInfo(selectedStudent.id, 'isNeisDone', !selectedStudent.isNeisDone)} 
+                                                className="w-5 h-5 accent-yellow-600 cursor-pointer disabled:cursor-not-allowed" 
                                             />
                                         </label>
+                                    )}
 
-                                        <label className={`flex items-center justify-between p-4 rounded-xl border transition ${selectedStudent.isReportDone ? 'bg-green-100 text-green-800 border-green-200 shadow-inner' : 'bg-slate-50 border-transparent opacity-60'}`}>
-                                            <span className="font-bold text-sm">보고서 제출 완료</span>
-                                            <input 
-                                                type="checkbox" 
-                                                checked={selectedStudent.isReportDone} 
-                                                onChange={() => updateStudentInfo(selectedStudent.id, 'isReportDone', !selectedStudent.isReportDone)} 
-                                                className="w-6 h-6 accent-green-600 cursor-pointer" 
-                                            />
-                                        </label>
-                                    </div>
+                                    <label className={`flex items-center justify-between p-4 rounded-xl border transition ${selectedStudent.isAppReceived ? 'bg-indigo-50 text-indigo-800 border-indigo-200' : 'bg-slate-50 border-transparent opacity-60'} ${(selectedStudent.isNeisRequested && !selectedStudent.isNeisDone) || selectedStudent.isReportDone ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                                        <span className="font-bold text-sm">신청서 접수 완료</span>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={selectedStudent.isAppReceived} 
+                                            disabled={(selectedStudent.isNeisRequested && !selectedStudent.isNeisDone) || selectedStudent.isReportDone}
+                                            onChange={() => updateStudentInfo(selectedStudent.id, 'isAppReceived', !selectedStudent.isAppReceived)} 
+                                            className="w-5 h-5 accent-indigo-600 cursor-pointer disabled:cursor-not-allowed" 
+                                        />
+                                    </label>
+
+                                    <label className={`flex items-center justify-between p-4 rounded-xl border transition ${selectedStudent.isReportDone ? 'bg-green-100 text-green-800 border-green-200' : 'bg-slate-50 border-transparent opacity-60'} ${!selectedStudent.isAppReceived ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                                        <span className="font-bold text-sm">보고서 제출 완료</span>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={selectedStudent.isReportDone} 
+                                            disabled={!selectedStudent.isAppReceived}
+                                            onChange={() => updateStudentInfo(selectedStudent.id, 'isReportDone', !selectedStudent.isReportDone)} 
+                                            className="w-5 h-5 accent-green-600 cursor-pointer disabled:cursor-not-allowed" 
+                                        />
+                                    </label>
                                 </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <button onClick={() => deleteStudent(selectedStudent.id)} className="py-4 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-100 transition active:scale-95">일정 삭제</button>
-                                    <button onClick={() => setSelectedStudent(null)} className="py-4 bg-slate-900 text-white font-bold rounded-xl active:scale-95 transition shadow-lg">닫기</button>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button onClick={() => deleteStudent(selectedStudent.id)} className="py-3 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-100 transition">기록 삭제</button>
+                                    <button onClick={() => setSelectedStudent(null)} className="py-3 bg-slate-900 text-white font-bold rounded-xl active:scale-95 transition">닫기</button>
                                 </div>
                             </div>
                         </div>
@@ -447,24 +459,25 @@
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-bg">
                             <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl flex flex-col max-h-[80vh]">
                                 <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-xl font-bold">휴업일/행사 설정</h3>
+                                    <h3 className="text-xl font-bold">학사 일정 편집</h3>
                                     <button onClick={() => setIsHolidayModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition"><Icon name="x" /></button>
                                 </div>
-                                <div className="flex flex-col gap-2 mb-4 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                                <div className="flex flex-col gap-2 mb-4">
                                     <div className="flex gap-2">
-                                        <input placeholder="행사명" value={newHoliday.name} onChange={e => setNewHoliday({...newHoliday, name: e.target.value})} className="flex-1 p-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
-                                        <input type="date" value={newHoliday.date} onChange={e => setNewHoliday({...newHoliday, date: e.target.value})} className="p-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
+                                        <input placeholder="행사명" value={newHoliday.name} onChange={e => setNewHoliday({...newHoliday, name: e.target.value})} className="flex-1 p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500" />
+                                        <input type="date" value={newHoliday.date} onChange={e => setNewHoliday({...newHoliday, date: e.target.value})} className="p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500" />
                                     </div>
-                                    <button onClick={addHoliday} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold active:scale-95 transition shadow-md">일정 추가</button>
+                                    <button onClick={addHoliday} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-bold active:scale-95 transition">일정 추가</button>
                                 </div>
                                 <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-hide">
                                     {holidays.sort((a,b) => a.date.localeCompare(b.date)).map(h => (
-                                        <div key={h.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                        <div key={h.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border">
                                             <div><div className="font-bold text-slate-700 text-sm">{h.name}</div><div className="text-[10px] text-slate-400">{h.date}</div></div>
-                                            <button onClick={() => deleteHoliday(h.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition"><Icon name="trash-2" size={18} /></button>
+                                            <button onClick={() => deleteHoliday(h.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition"><Icon name="trash-2" size={16} /></button>
                                         </div>
                                     ))}
                                 </div>
+                                <button onClick={() => setIsHolidayModalOpen(false)} className="mt-4 py-3 bg-slate-900 text-white font-bold rounded-xl shadow-lg active:scale-95 transition">확인</button>
                             </div>
                         </div>
                     )}
