@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>교외체험학습 매니저</title>
     
     <!-- CSS 및 라이브러리 로드 -->
@@ -15,13 +15,46 @@
     
     <style>
         @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
-        body { font-family: 'Pretendard', -apple-system, sans-serif; background-color: #f8fafc; }
-        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background-color: #e2e8f0; border: 1px solid #e2e8f0; }
-        .calendar-cell { min-height: 120px; background-color: white; padding: 0.5rem; transition: background-color 0.2s; }
+        body { 
+            font-family: 'Pretendard', -apple-system, sans-serif; 
+            background-color: #f8fafc; 
+            touch-action: manipulation;
+        }
+        
+        /* 모바일 환경 대응을 위한 스크롤 영역 설정 */
+        .main-container {
+            height: calc(100vh - 64px); /* 헤더 제외 높이 */
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .calendar-wrapper {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .calendar-grid { 
+            display: grid; 
+            grid-template-columns: repeat(7, 1fr); 
+            gap: 1px; 
+            background-color: #e2e8f0; 
+            border: 1px solid #e2e8f0; 
+            min-width: 700px; /* 모바일에서 가로 스크롤을 발생시켜서 칸이 찌그러지지 않게 함 */
+        }
+
+        .calendar-cell { 
+            min-height: 100px; 
+            background-color: white; 
+            padding: 0.5rem; 
+            transition: background-color 0.2s; 
+        }
+        
         .calendar-cell:hover { background-color: #f1f5f9; }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .modal-bg { background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); }
-        input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; }
+        
+        /* 폼 요소 모바일 최적화 */
+        input, button { font-size: 16px !important; }
     </style>
     <link rel="manifest" href="manifest.json">
 </head>
@@ -48,6 +81,7 @@
         };
 
         const parseDate = (str) => {
+            if (!str) return new Date();
             const [y, m, d] = str.split('-').map(Number);
             return new Date(y, m - 1, d);
         };
@@ -101,7 +135,7 @@
             const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
             
             const [form, setForm] = useState({ 
-                name: '', startDate: '', endDate: '', place: '', deadline: '', isNeisDone: false, isNeisRequested: false
+                name: '', startDate: '', endDate: '', place: '', deadline: '', reportDeadline: '', isNeisDone: false, isNeisRequested: false
             });
             const [newHoliday, setNewHoliday] = useState({ name: '', date: '' });
 
@@ -116,8 +150,8 @@
                     '종료일': s.endDate,
                     '장소': s.place,
                     '신청 마감일': s.deadline,
-                    'NEIS 신청 필요': s.isNeisRequested ? '예' : '아니오',
-                    'NEIS 신청 완료': s.isNeisDone ? '완료' : '미완료',
+                    '보고 마감일': s.reportDeadline,
+                    'NEIS 신청 여부': s.isNeisDone ? '완료' : '미완료',
                     '신청서 접수': s.isAppReceived ? '완료' : '미완료',
                     '보고서 완료': s.isReportDone ? '완료' : '미완료'
                 }));
@@ -141,28 +175,44 @@
                 return formatDate(date);
             };
 
+            // 보고 마감일 계산 (종료일 + 7일)
+            const calculateReportDeadline = (endDateStr) => {
+                if (!endDateStr) return '';
+                let date = parseDate(endDateStr);
+                date.setDate(date.getDate() + 7);
+                return formatDate(date);
+            };
+
             const handleFormChange = (e) => {
                 const { name, value, type, checked } = e.target;
                 const nextValue = type === 'checkbox' ? checked : value;
                 const nextForm = { ...form, [name]: nextValue };
+                
                 if (name === 'startDate') {
                     nextForm.deadline = calculateDeadline(value, holidays);
-                    if (!nextForm.endDate || nextForm.endDate < value) nextForm.endDate = value;
+                    if (!nextForm.endDate || nextForm.endDate < value) {
+                        nextForm.endDate = value;
+                        nextForm.reportDeadline = calculateReportDeadline(value);
+                    }
                 }
+                
+                if (name === 'endDate') {
+                    nextForm.reportDeadline = calculateReportDeadline(value);
+                }
+
                 setForm(nextForm);
             };
 
             const addStudent = () => {
-                if (!form.name || !form.startDate) return;
-                // isNeisRequested는 팝업 표시 여부를 결정함
+                if (!form.name || !form.startDate || !form.endDate) return;
                 setStudents([...students, { 
                     ...form, 
                     id: Date.now(), 
-                    isNeisRequested: form.isNeisDone, // 처음 체크했다면 팝업에서도 계속 관리함
+                    isNeisRequested: form.isNeisDone,
                     isAppReceived: false, 
                     isReportDone: false 
                 }]);
-                setForm({ name: '', startDate: '', endDate: '', place: '', deadline: '', isNeisDone: false, isNeisRequested: false });
+                setForm({ name: '', startDate: '', endDate: '', place: '', deadline: '', reportDeadline: '', isNeisDone: false, isNeisRequested: false });
             };
 
             const deleteStudent = (id) => {
@@ -206,121 +256,138 @@
             }, [viewDate]);
 
             return (
-                <div className="min-h-screen flex flex-col">
-                    <header className="bg-indigo-600 text-white p-4 shadow-lg flex justify-between items-center sticky top-0 z-30">
-                        <div className="flex items-center gap-2 font-bold text-xl">
+                <div className="h-screen flex flex-col overflow-hidden">
+                    <header className="bg-indigo-600 text-white p-4 shadow-lg flex justify-between items-center flex-none">
+                        <div className="flex items-center gap-2 font-bold text-lg sm:text-xl">
                             <Icon name="graduation-cap" />
-                            <span>구영초 교외체험학습 매니저</span>
+                            <span className="truncate">구영초 체험학습 매니저</span>
                         </div>
-                        <button onClick={downloadExcel} className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold transition shadow-md active:scale-95">
-                            <Icon name="file-spreadsheet" size={18} />
-                            <span className="hidden sm:inline">목록 다운로드</span>
+                        <button onClick={downloadExcel} className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs sm:text-sm font-bold transition shadow-md active:scale-95">
+                            <Icon name="file-spreadsheet" size={16} />
+                            <span className="hidden xs:inline">다운로드</span>
                         </button>
                     </header>
 
-                    <main className="p-4 flex-1 flex flex-col lg:flex-row gap-6 max-w-[1600px] mx-auto w-full">
-                        <aside className="w-full lg:w-80 flex flex-col gap-4">
-                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                                <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
-                                    <Icon name="plus-circle" className="text-indigo-600" />
-                                    <span>일정 추가</span>
-                                </h2>
-                                <div className="space-y-4">
-                                    <input name="name" value={form.name} onChange={handleFormChange} placeholder="학생 이름" className="w-full p-3 bg-slate-50 rounded-xl ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <input type="date" name="startDate" value={form.startDate} onChange={handleFormChange} className="w-full p-2 bg-slate-50 rounded-lg text-sm ring-1 ring-slate-200" />
-                                        <input type="date" name="endDate" value={form.endDate} onChange={handleFormChange} className="w-full p-2 bg-slate-50 rounded-lg text-sm ring-1 ring-slate-200" />
-                                    </div>
-                                    <input name="place" value={form.place} onChange={handleFormChange} placeholder="장소 및 내용" className="w-full p-3 bg-slate-50 rounded-xl ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
-                                    
-                                    <label className="flex items-center gap-2 px-1 cursor-pointer">
-                                        <input type="checkbox" name="isNeisDone" checked={form.isNeisDone} onChange={handleFormChange} className="w-4 h-4 accent-indigo-600" />
-                                        <span className="text-sm font-bold text-slate-600">NEIS 신청</span>
-                                    </label>
-
-                                    <div className="p-4 bg-red-50 rounded-xl border border-red-100 text-center">
-                                        <div className="text-[10px] font-bold text-red-400 mb-1">주말, 공휴일 미포함 3일 전</div>
-                                        <div className="text-xl font-black text-red-600 tracking-tight">{form.deadline || '자동 계산'}</div>
-                                    </div>
-                                    <button onClick={addStudent} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition active:scale-95 shadow-md">일정 등록</button>
-                                </div>
-                            </div>
-                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col max-h-[400px]">
-                                <h2 className="font-bold text-lg mb-4">최근 등록</h2>
-                                <div className="overflow-y-auto space-y-2 pr-1 scrollbar-hide">
-                                    {students.length === 0 ? <p className="text-slate-400 text-center py-8 text-sm">등록된 일정이 없습니다.</p> :
-                                    [...students].reverse().map(s => (
-                                        <div key={s.id} onClick={() => setSelectedStudent(s)} className="p-3 bg-slate-50 rounded-xl border border-transparent hover:border-indigo-100 cursor-pointer transition">
-                                            <div className="font-bold text-slate-700">{s.name}</div>
-                                            <div className="text-[11px] text-slate-400 font-medium">
-                                                {s.startDate.slice(5)} ~ {s.endDate.slice(5)}
+                    <main className="flex-1 main-container p-4">
+                        <div className="flex flex-col lg:flex-row gap-6 max-w-[1600px] mx-auto w-full">
+                            <aside className="w-full lg:w-80 flex flex-col gap-4 flex-none">
+                                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                                    <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
+                                        <Icon name="plus-circle" className="text-indigo-600" />
+                                        <span>일정 추가</span>
+                                    </h2>
+                                    <div className="space-y-3">
+                                        <input name="name" value={form.name} onChange={handleFormChange} placeholder="학생 이름" className="w-full p-3 bg-slate-50 rounded-xl ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="text-[10px] text-slate-400 ml-1">시작일</label>
+                                                <input type="date" name="startDate" value={form.startDate} onChange={handleFormChange} className="w-full p-2 bg-slate-50 rounded-lg text-sm ring-1 ring-slate-200" />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] text-slate-400 ml-1">종료일</label>
+                                                <input type="date" name="endDate" value={form.endDate} onChange={handleFormChange} className="w-full p-2 bg-slate-50 rounded-lg text-sm ring-1 ring-slate-200" />
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </aside>
+                                        <input name="place" value={form.place} onChange={handleFormChange} placeholder="장소 및 내용" className="w-full p-3 bg-slate-50 rounded-xl ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                        
+                                        <label className="flex items-center gap-2 px-1 cursor-pointer">
+                                            <input type="checkbox" name="isNeisDone" checked={form.isNeisDone} onChange={handleFormChange} className="w-4 h-4 accent-indigo-600" />
+                                            <span className="text-sm font-bold text-slate-600">NEIS 신청 완료</span>
+                                        </label>
 
-                        <section className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-                            <div className="p-4 border-b flex justify-between items-center bg-slate-50">
-                                <div className="flex items-center gap-2">
-                                    <h2 className="text-xl font-black">{viewDate.getFullYear()}년 {viewDate.getMonth() + 1}월</h2>
-                                    <button onClick={() => setIsHolidayModalOpen(true)} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg transition"><Icon name="settings" size={18} /></button>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="p-2 bg-red-50 rounded-xl border border-red-100 text-center">
+                                                <div className="text-[9px] font-bold text-red-400 mb-1">신청 마감일</div>
+                                                <div className="text-sm font-black text-red-600">{form.deadline || '-'}</div>
+                                            </div>
+                                            <div className="p-2 bg-blue-50 rounded-xl border border-blue-100 text-center">
+                                                <div className="text-[9px] font-bold text-blue-400 mb-1">보고 마감일</div>
+                                                <div className="text-sm font-black text-blue-600">{form.reportDeadline || '-'}</div>
+                                            </div>
+                                        </div>
+                                        <button onClick={addStudent} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition active:scale-95 shadow-md mt-2">일정 등록</button>
+                                    </div>
                                 </div>
-                                <div className="flex gap-1">
-                                    <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} className="p-2 hover:bg-white rounded-lg border transition"><Icon name="chevron-left" size={16}/></button>
-                                    <button onClick={() => setViewDate(new Date())} className="px-3 text-sm font-bold border rounded-lg hover:bg-white">오늘</button>
-                                    <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} className="p-2 hover:bg-white rounded-lg border transition"><Icon name="chevron-right" size={16}/></button>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-7 text-center py-3 bg-slate-50 font-bold text-slate-400 border-b">
-                                {['일','월','화','수','목','금','토'].map((d, i) => (
-                                    <div key={d} className={i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : ''}>{d}</div>
-                                ))}
-                            </div>
-                            <div className="calendar-grid flex-1">
-                                {calendarDays.map((day, idx) => {
-                                    const dStr = formatDate(day.date);
-                                    const dayHolidays = holidays.filter(h => h.date === dStr);
-                                    const dayEvents = students.filter(s => dStr >= s.startDate && dStr <= s.endDate);
-                                    const isSun = day.date.getDay() === 0;
-                                    const isSat = day.date.getDay() === 6;
-                                    const isHoliday = dayHolidays.length > 0;
-                                    return (
-                                        <div key={idx} className={`calendar-cell ${!day.current ? 'opacity-30' : ''}`}>
-                                            <div className="flex justify-between items-start mb-1">
-                                                <span className={`text-lg font-bold ${(isSun || isHoliday) ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-slate-600'}`}>
-                                                    {day.date.getDate()}
-                                                </span>
-                                                <div className="flex flex-col items-end gap-0.5">
-                                                    {dayHolidays.map(h => (
-                                                        <span key={h.id} className={`text-[11px] px-1 py-0.5 rounded font-bold truncate max-w-[70px] ${h.name.includes('재량') ? 'bg-orange-100 text-orange-600' : 'bg-red-100 text-red-600'}`}>
-                                                            {h.name}
-                                                        </span>
-                                                    ))}
+                                
+                                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col max-h-[300px]">
+                                    <h2 className="font-bold text-lg mb-4">최근 등록</h2>
+                                    <div className="overflow-y-auto space-y-2 pr-1 scrollbar-hide">
+                                        {students.length === 0 ? <p className="text-slate-400 text-center py-8 text-sm">등록된 일정이 없습니다.</p> :
+                                        [...students].reverse().map(s => (
+                                            <div key={s.id} onClick={() => setSelectedStudent(s)} className="p-3 bg-slate-50 rounded-xl border border-transparent hover:border-indigo-100 cursor-pointer transition">
+                                                <div className="font-bold text-slate-700 text-sm">{s.name}</div>
+                                                <div className="text-[11px] text-slate-400 font-medium">
+                                                    {s.startDate.slice(5)} ~ {s.endDate.slice(5)}
                                                 </div>
                                             </div>
-                                            <div className="space-y-1">
-                                                {dayEvents.map(e => (
-                                                    <div key={e.id} onClick={() => setSelectedStudent(e)} className={`text-[13px] p-1 border rounded font-bold truncate cursor-pointer transition shadow-sm ${e.isReportDone ? 'bg-green-100 text-green-800' : e.isAppReceived ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-50 text-slate-600'}`}>
-                                                        {e.name}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </section>
-                    </main>
+                                        ))}
+                                    </div>
+                                </div>
+                            </aside>
 
-                    <footer className="p-6 text-center text-slate-400 text-xs font-medium">
-                        <p>© 2026. Hannae Lee. All rights reserved.</p>
-                    </footer>
+                            <section className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
+                                <div className="p-4 border-b flex justify-between items-center bg-slate-50 flex-none">
+                                    <div className="flex items-center gap-2">
+                                        <h2 className="text-lg sm:text-xl font-black">{viewDate.getFullYear()}년 {viewDate.getMonth() + 1}월</h2>
+                                        <button onClick={() => setIsHolidayModalOpen(true)} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg transition"><Icon name="settings" size={18} /></button>
+                                    </div>
+                                    <div className="flex gap-1">
+                                        <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} className="p-2 hover:bg-white rounded-lg border transition"><Icon name="chevron-left" size={16}/></button>
+                                        <button onClick={() => setViewDate(new Date())} className="px-3 text-sm font-bold border rounded-lg hover:bg-white">오늘</button>
+                                        <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} className="p-2 hover:bg-white rounded-lg border transition"><Icon name="chevron-right" size={16}/></button>
+                                    </div>
+                                </div>
+                                
+                                <div className="calendar-wrapper flex-1">
+                                    <div className="grid grid-cols-7 text-center py-3 bg-slate-50 font-bold text-slate-400 border-b min-w-[700px]">
+                                        {['일','월','화','수','목','금','토'].map((d, i) => (
+                                            <div key={d} className={i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : ''}>{d}</div>
+                                        ))}
+                                    </div>
+                                    <div className="calendar-grid">
+                                        {calendarDays.map((day, idx) => {
+                                            const dStr = formatDate(day.date);
+                                            const dayHolidays = holidays.filter(h => h.date === dStr);
+                                            const dayEvents = students.filter(s => dStr >= s.startDate && dStr <= s.endDate);
+                                            const isSun = day.date.getDay() === 0;
+                                            const isSat = day.date.getDay() === 6;
+                                            const isHoliday = dayHolidays.length > 0;
+                                            return (
+                                                <div key={idx} className={`calendar-cell ${!day.current ? 'opacity-30' : ''}`}>
+                                                    <div className="flex justify-between items-start mb-1">
+                                                        <span className={`text-sm sm:text-base font-bold ${(isSun || isHoliday) ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-slate-600'}`}>
+                                                            {day.date.getDate()}
+                                                        </span>
+                                                        <div className="flex flex-col items-end gap-0.5">
+                                                            {dayHolidays.map(h => (
+                                                                <span key={h.id} className={`text-[9px] px-1 py-0.5 rounded font-bold truncate max-w-[60px] ${h.name.includes('재량') ? 'bg-orange-100 text-orange-600' : 'bg-red-100 text-red-600'}`}>
+                                                                    {h.name}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        {dayEvents.map(e => (
+                                                            <div key={e.id} onClick={() => setSelectedStudent(e)} className={`text-[11px] p-1 border rounded font-bold truncate cursor-pointer transition shadow-sm ${e.isReportDone ? 'bg-green-100 text-green-800' : e.isAppReceived ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-50 text-slate-600'}`}>
+                                                                {e.name}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </section>
+                        </div>
+                        <footer className="p-6 text-center text-slate-400 text-xs font-medium">
+                            <p>© 2026. Hannae Lee. All rights reserved.</p>
+                        </footer>
+                    </main>
 
                     {selectedStudent && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-bg">
-                            <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl">
+                            <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl overflow-y-auto max-h-[90vh]">
                                 <div className="flex justify-between items-center mb-6">
                                     <div className="flex-1">
                                         <h3 className="text-2xl font-black">{selectedStudent.name}</h3>
@@ -334,12 +401,17 @@
                                         <div className="font-bold text-slate-700">{selectedStudent.startDate} ~ {selectedStudent.endDate}</div>
                                     </div>
                                     
-                                    <div className="p-3 bg-red-50 rounded-xl border border-red-100">
-                                        <div className="text-[10px] font-bold text-red-400">신청 마감일 (3일 전)</div>
-                                        <div className="font-black text-red-600 text-xl">{selectedStudent.deadline}</div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="p-3 bg-red-50 rounded-xl border border-red-100">
+                                            <div className="text-[10px] font-bold text-red-400">신청 마감일</div>
+                                            <div className="font-black text-red-600 text-sm sm:text-base">{selectedStudent.deadline}</div>
+                                        </div>
+                                        <div className="p-3 bg-blue-50 rounded-xl border border-blue-100">
+                                            <div className="text-[10px] font-bold text-blue-400">보고 마감일</div>
+                                            <div className="font-black text-blue-600 text-sm sm:text-base">{selectedStudent.reportDeadline}</div>
+                                        </div>
                                     </div>
 
-                                    {/* 1단계: NEIS 신청 (등록 시 체크했을 때만 표시됨) */}
                                     {selectedStudent.isNeisRequested && (
                                         <label className={`flex items-center justify-between p-4 rounded-xl border transition ${selectedStudent.isNeisDone ? 'bg-yellow-100 text-yellow-800 border-yellow-200' : 'bg-slate-50 border-transparent opacity-60'} ${selectedStudent.isAppReceived ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                                             <span className="font-bold text-sm">NEIS 신청 완료</span>
@@ -353,7 +425,6 @@
                                         </label>
                                     )}
 
-                                    {/* 2단계: 신청서 접수 (NEIS 신청이 필요 없거나, NEIS 신청이 완료되었을 때 가능) */}
                                     <label className={`flex items-center justify-between p-4 rounded-xl border transition ${selectedStudent.isAppReceived ? 'bg-indigo-50 text-indigo-800 border-indigo-200' : 'bg-slate-50 border-transparent opacity-60'} ${(selectedStudent.isNeisRequested && !selectedStudent.isNeisDone) || selectedStudent.isReportDone ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                                         <span className="font-bold text-sm">신청서 접수 완료</span>
                                         <input 
@@ -365,9 +436,8 @@
                                         />
                                     </label>
 
-                                    {/* 3단계: 보고서 완료 (신청서가 접수되었을 때만 가능) */}
-                                    <label className={`flex items-center justify-between p-4 rounded-xl border transition ${selectedStudent.isReportDone ? 'bg-green-100 text-green-800 border-green-200' : 'bg-slate-50 border-transparent opacity-60'} !selectedStudent.isAppReceived ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                                        <span className="font-bold text-sm">보고서 완료</span>
+                                    <label className={`flex items-center justify-between p-4 rounded-xl border transition ${selectedStudent.isReportDone ? 'bg-green-100 text-green-800 border-green-200' : 'bg-slate-50 border-transparent opacity-60'} ${!selectedStudent.isAppReceived ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                                        <span className="font-bold text-sm">보고서 제출 완료</span>
                                         <input 
                                             type="checkbox" 
                                             checked={selectedStudent.isReportDone} 
@@ -392,15 +462,17 @@
                                     <h3 className="text-xl font-bold">학사 일정 편집</h3>
                                     <button onClick={() => setIsHolidayModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition"><Icon name="x" /></button>
                                 </div>
-                                <div className="flex gap-2 mb-4">
-                                    <input placeholder="행사명" value={newHoliday.name} onChange={e => setNewHoliday({...newHoliday, name: e.target.value})} className="flex-1 p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500" />
-                                    <input type="date" value={newHoliday.date} onChange={e => setNewHoliday({...newHoliday, date: e.target.value})} className="p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500" />
-                                    <button onClick={addHoliday} className="bg-indigo-600 text-white px-4 rounded-lg font-bold active:scale-95 transition">추가</button>
+                                <div className="flex flex-col gap-2 mb-4">
+                                    <div className="flex gap-2">
+                                        <input placeholder="행사명" value={newHoliday.name} onChange={e => setNewHoliday({...newHoliday, name: e.target.value})} className="flex-1 p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500" />
+                                        <input type="date" value={newHoliday.date} onChange={e => setNewHoliday({...newHoliday, date: e.target.value})} className="p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500" />
+                                    </div>
+                                    <button onClick={addHoliday} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-bold active:scale-95 transition">일정 추가</button>
                                 </div>
                                 <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-hide">
                                     {holidays.sort((a,b) => a.date.localeCompare(b.date)).map(h => (
                                         <div key={h.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border">
-                                            <div><div className="font-bold text-slate-700">{h.name}</div><div className="text-[10px] text-slate-400">{h.date}</div></div>
+                                            <div><div className="font-bold text-slate-700 text-sm">{h.name}</div><div className="text-[10px] text-slate-400">{h.date}</div></div>
                                             <button onClick={() => deleteHoliday(h.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition"><Icon name="trash-2" size={16} /></button>
                                         </div>
                                     ))}
@@ -417,4 +489,3 @@
     </script>
 </body>
 </html>
-
