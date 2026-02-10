@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>교외체험학습 매니저</title>
+    <title>구영초 교외체험학습 매니저</title>
     
     <!-- CSS 및 라이브러리 로드 -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -161,8 +161,8 @@
                 }));
                 const worksheet = XLSX.utils.json_to_sheet(excelData);
                 const workbook = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(workbook, worksheet, "체험학습리스트");
-                XLSX.writeFile(workbook, `체험학습_현황_${formatDate(new Date())}.xlsx`);
+                XLSX.utils.book_append_sheet(workbook, worksheet, "교외체험학습리스트");
+                XLSX.writeFile(workbook, `교외체험학습_현황_${formatDate(new Date())}.xlsx`);
             };
 
             const calculateDeadline = (startDateStr, holidayList) => {
@@ -336,7 +336,7 @@
                                         
                                         <label className="flex items-center gap-2 px-1 cursor-pointer">
                                             <input type="checkbox" name="isNeisDone" checked={form.isNeisDone} onChange={handleFormChange} className="w-4 h-4 accent-indigo-600" />
-                                            <span className="text-sm font-bold text-slate-600">NEIS 신청 완료</span>
+                                            <span className="text-sm font-bold text-slate-600">NEIS 신청</span>
                                         </label>
 
                                         <div className="grid grid-cols-2 gap-2 mt-2">
@@ -543,4 +543,5 @@
     </script>
 </body>
 </html>
+
 
