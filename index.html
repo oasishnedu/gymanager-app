@@ -290,7 +290,7 @@
                     <header className="bg-indigo-600 text-white p-4 shadow-lg flex justify-between items-center flex-none">
                         <div className="flex items-center gap-2 font-bold text-lg sm:text-xl">
                             <Icon name="graduation-cap" />
-                            <span className="truncate">구영초 체험학습 매니저</span>
+                            <span className="truncate">구영초 교외체험학습 매니저</span>
                         </div>
                         <button onClick={downloadExcel} className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs sm:text-sm font-bold transition shadow-md active:scale-95">
                             <Icon name="file-spreadsheet" size={16} />
@@ -430,7 +430,7 @@
                             </section>
                         </div>
                         <footer className="p-6 text-center text-slate-400 text-xs font-medium">
-                            <p>© 2026. Hannae Lee. All rights reserved.</p>
+                            <p>© 2026. Appro Lee. All rights reserved.</p>
                         </footer>
                     </main>
 
@@ -468,7 +468,7 @@
 
                                     {selectedStudent.isNeisRequested && (
                                         <label className={`flex items-center justify-between p-4 rounded-xl border transition ${selectedStudent.isNeisDone ? 'bg-yellow-100 text-yellow-800 border-yellow-200' : 'bg-slate-50 border-transparent opacity-60'} ${selectedStudent.isAppReceived ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                                            <span className="font-bold text-sm">NEIS 신청 완료</span>
+                                            <span className="font-bold text-sm">NEIS 신청</span>
                                             <input 
                                                 type="checkbox" 
                                                 checked={selectedStudent.isNeisDone} 
@@ -543,3 +543,4 @@
     </script>
 </body>
 </html>
+
