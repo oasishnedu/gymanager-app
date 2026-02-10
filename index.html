@@ -135,8 +135,9 @@
             const [selectedStudent, setSelectedStudent] = useState(null);
             const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
             
+            // startTime 상태 추가: '00:00'(오전) 또는 '12:20'(오후)
             const [form, setForm] = useState({ 
-                name: '', startDate: '', endDate: '', place: '', deadline: '', reportDeadline: '', isNeisDone: false, isNeisRequested: false
+                name: '', startDate: '', startTime: '00:00', endDate: '', place: '', deadline: '', reportDeadline: '', isNeisDone: false, isNeisRequested: false
             });
             const [newHoliday, setNewHoliday] = useState({ name: '', date: '' });
 
@@ -148,7 +149,9 @@
                 const excelData = students.map(s => ({
                     '학생 이름': s.name,
                     '시작일': s.startDate,
+                    '시작 시간': s.startTime === '12:20' ? '오후 12:20' : '오전 00:00',
                     '종료일': s.endDate,
+                    '총 기간(일)': s.duration,
                     '장소': s.place,
                     '신청 마감일': s.deadline,
                     '보고 마감일': s.reportDeadline,
@@ -184,6 +187,25 @@
                 return formatDate(date);
             };
 
+            // 기간 계산 함수
+            const calculateDuration = (start, end, time) => {
+                if (!start || !end) return 0;
+                const s = parseDate(start);
+                const e = parseDate(end);
+                
+                // 날짜 차이 계산 (밀리초 단위 -> 일 단위)
+                const diffTime = e.getTime() - s.getTime();
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // 시작일 포함이므로 +1
+                
+                if (diffDays <= 0) return 0;
+
+                // 시작 시간이 오후 12:20(12:20)인 경우 0.5일 차감
+                if (time === '12:20') {
+                    return diffDays - 0.5;
+                }
+                return diffDays;
+            };
+            
             const handleFormChange = (e) => {
                 const { name, value, type, checked } = e.target;
                 const nextValue = type === 'checkbox' ? checked : value;
@@ -208,7 +230,7 @@
                 if (!form.name || !form.startDate || !form.endDate) return;
                 setStudents([...students, { 
                     ...form, 
-                    id: Date.now(), 
+                    id: Date.now(), // 계산된 기간 저장 
                     isNeisRequested: form.isNeisDone,
                     isAppReceived: false, 
                     isReportDone: false 
@@ -261,7 +283,7 @@
                     <header className="bg-indigo-600 text-white p-4 shadow-lg flex justify-between items-center flex-none">
                         <div className="flex items-center gap-2 font-bold text-lg sm:text-xl">
                             <Icon name="graduation-cap" />
-                            <span className="truncate">구영초 체험학습 매니저</span>
+                            <span className="truncate">구영초 교외체험학습 매니저</span>
                         </div>
                         <button onClick={downloadExcel} className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs sm:text-sm font-bold transition shadow-md active:scale-95">
                             <Icon name="file-spreadsheet" size={16} />
@@ -298,11 +320,11 @@
 
                                         <div className="grid grid-cols-2 gap-2">
                                             <div className="p-2 bg-red-50 rounded-xl border border-red-100 text-center">
-                                                <div className="text-[9px] font-bold text-red-400 mb-1">신청 마감일</div>
+                                                <div className="text-[10px] font-bold text-red-400 mb-1">신청 마감일</div>
                                                 <div className="text-sm font-black text-red-600">{form.deadline || '-'}</div>
                                             </div>
                                             <div className="p-2 bg-blue-50 rounded-xl border border-blue-100 text-center">
-                                                <div className="text-[9px] font-bold text-blue-400 mb-1">보고 마감일</div>
+                                                <div className="text-[10px] font-bold text-blue-400 mb-1">보고 마감일</div>
                                                 <div className="text-sm font-black text-blue-600">{form.reportDeadline || '-'}</div>
                                             </div>
                                         </div>
@@ -382,7 +404,7 @@
                             </section>
                         </div>
                         <footer className="p-6 text-center text-slate-400 text-xs font-medium">
-                            <p>© 2026. Hannae Lee. All rights reserved.</p>
+                            <p>© 2026. Appproach Lee. All rights reserved.</p>
                         </footer>
                     </main>
 
@@ -490,5 +512,6 @@
     </script>
 </body>
 </html>
+
 
 
