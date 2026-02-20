@@ -21,9 +21,8 @@
             touch-action: manipulation;
         }
         
-        /* 모바일 환경 대응을 위한 스크롤 영역 설정 */
         .main-container {
-            height: calc(100vh - 64px); /* 헤더 제외 높이 */
+            height: calc(100vh - 116px);
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
         }
@@ -39,7 +38,7 @@
             gap: 1px; 
             background-color: #e2e8f0; 
             border: 1px solid #e2e8f0; 
-            min-width: 700px; /* 모바일에서 가로 스크롤을 발생시켜서 칸이 찌그러지지 않게 함 */
+            min-width: 700px; 
         }
 
         .calendar-cell { 
@@ -53,16 +52,16 @@
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .modal-bg { background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); }
         
-        /* 폼 요소 모바일 최적화 */
-        input, button, select { font-size: 16px !important; }
+        input, button, select, textarea { font-size: 16px !important; }
     </style>
-    <link rel="manifest" href="manifest.json">
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
+
+        const MAX_DAYS = 15; // 연간 규정 일수 (15일로 조정)
 
         // 아이콘 컴포넌트
         const Icon = ({ name, size = 20, className = "" }) => {
@@ -72,7 +71,6 @@
             return <i data-lucide={name} style={{ width: size, height: size }} className={className}></i>;
         };
 
-        // 날짜 유틸리티
         const formatDate = (date) => {
             const y = date.getFullYear();
             const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -86,10 +84,7 @@
             return new Date(y, m - 1, d);
         };
 
-        // 데이터 버전
         const DATA_VERSION = "2026-v4";
-
-        // 2026년~2027년 대한민국 공휴일 데이터
         const INITIAL_HOLIDAYS = [
             { id: 1, date: '2026-01-01', name: '신정' },
             { id: 2, date: '2026-02-16', name: '설날 연휴' },
@@ -97,12 +92,10 @@
             { id: 4, date: '2026-02-18', name: '설날 연휴' },
             { id: 5, date: '2026-03-01', name: '삼일절' },
             { id: 6, date: '2026-03-02', name: '대체공휴일' },
-            { id: 7, date: '2026-05-04', name: '재량휴업일' },
             { id: 8, date: '2026-05-05', name: '어린이날' },
             { id: 9, date: '2026-05-24', name: '부처님오신날' },
             { id: 10, date: '2026-05-25', name: '대체공휴일' },
             { id: 11, date: '2026-06-06', name: '현충일' },
-            { id: 12, date: '2026-07-17', name: '제헌절' },
             { id: 13, date: '2026-08-15', name: '광복절' },
             { id: 14, date: '2026-08-17', name: '대체공휴일' },
             { id: 15, date: '2026-09-24', name: '추석 연휴' },
@@ -111,19 +104,25 @@
             { id: 18, date: '2026-10-03', name: '개천절' },
             { id: 19, date: '2026-10-05', name: '대체공휴일' },
             { id: 20, date: '2026-10-09', name: '한글날' },
-            { id: 21, date: '2026-11-24', name: '재량휴업일' },
             { id: 22, date: '2026-12-25', name: '성탄절' },
             { id: 23, date: '2027-01-01', name: '신정' }
         ];
 
         function App() {
+            // UI 상태
+            const [activeTab, setActiveTab] = useState('calendar'); // 'calendar' | 'students' | 'roster'
             const [viewDate, setViewDate] = useState(new Date());
-            const [students, setStudents] = useState(() => JSON.parse(localStorage.getItem('gy_students') || '[]'));
             
+            // 데이터 상태
+            const [students, setStudents] = useState(() => JSON.parse(localStorage.getItem('gy_students') || '[]'));
+            const [roster, setRoster] = useState(() => JSON.parse(localStorage.getItem('gy_roster') || '[]'));
+            const [rosterInput, setRosterInput] = useState(() => {
+                const saved = JSON.parse(localStorage.getItem('gy_roster') || '[]');
+                return saved.join('\n');
+            });
             const [holidays, setHolidays] = useState(() => {
                 const savedVersion = localStorage.getItem('gy_data_version');
                 const savedHolidays = localStorage.getItem('gy_holidays');
-                
                 if (savedVersion !== DATA_VERSION || !savedHolidays) {
                     localStorage.setItem('gy_data_version', DATA_VERSION);
                     localStorage.setItem('gy_holidays', JSON.stringify(INITIAL_HOLIDAYS));
@@ -133,19 +132,62 @@
             });
 
             const [selectedStudent, setSelectedStudent] = useState(null);
+            const [selectedStudentStats, setSelectedStudentStats] = useState(null);
             const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
             
-            // startTime 상태 추가: '00:00'(오전) 또는 '12:20'(오후)
             const [form, setForm] = useState({ 
                 name: '', startDate: '', startTime: '00:00', endDate: '', place: '', deadline: '', reportDeadline: '', isNeisDone: false, isNeisRequested: false
             });
             const [newHoliday, setNewHoliday] = useState({ name: '', date: '' });
 
+            // 로컬스토리지 동기화
             useEffect(() => localStorage.setItem('gy_students', JSON.stringify(students)), [students]);
             useEffect(() => localStorage.setItem('gy_holidays', JSON.stringify(holidays)), [holidays]);
+            useEffect(() => localStorage.setItem('gy_roster', JSON.stringify(roster)), [roster]);
+
+            const handleSaveRoster = () => {
+                const names = rosterInput.split('\n').map(n => n.trim()).filter(n => n !== '');
+                setRoster(names);
+                alert('명렬표가 성공적으로 저장 및 반영되었습니다.');
+                setActiveTab('students'); // 저장 후 명부 탭으로 이동
+            };
+
+            // 학생별 누적 데이터 계산 (명렬표 기반)
+            const studentStats = useMemo(() => {
+                const stats = {};
+                
+                // 1. 명렬표에 있는 학생들 0일 상태로 기본 세팅
+                roster.forEach((name, idx) => {
+                    stats[name] = { name: name, number: idx + 1, totalDuration: 0, count: 0, records: [] };
+                });
+
+                // 2. 실제 기록 합산
+                students.forEach(record => {
+                    const key = record.name.trim();
+                    if (!stats[key]) {
+                        // 명렬표에 없는 학생인 경우 (기존 데이터 유지)
+                        stats[key] = { name: key, number: 999, totalDuration: 0, count: 0, records: [] };
+                    }
+                    stats[key].totalDuration += Number(record.duration) || 0;
+                    stats[key].count += 1;
+                    stats[key].records.push(record);
+                });
+
+                // 번호순 우선 정렬, 없는 경우 이름순 정렬
+                return Object.values(stats).sort((a, b) => {
+                    if (a.number !== 999 && b.number !== 999) return a.number - b.number;
+                    if (a.number !== 999) return -1;
+                    if (b.number !== 999) return 1;
+                    return a.name.localeCompare(b.name);
+                });
+            }, [students, roster]);
 
             const downloadExcel = () => {
-                if (students.length === 0) return;
+                if (students.length === 0 && studentStats.length === 0) {
+                    alert('다운로드할 데이터가 없습니다.');
+                    return;
+                }
+                
                 const excelData = students.map(s => ({
                     '학생 이름': s.name,
                     '시작일': s.startDate,
@@ -159,9 +201,24 @@
                     '신청서 접수': s.isAppReceived ? '완료' : '미완료',
                     '보고서 완료': s.isReportDone ? '완료' : '미완료'
                 }));
-                const worksheet = XLSX.utils.json_to_sheet(excelData);
+
+                const statsData = studentStats.map(stat => ({
+                    '번호': stat.number !== 999 ? stat.number : '-',
+                    '학생 이름': stat.name,
+                    '누적 사용 일수': stat.totalDuration,
+                    [`잔여 일수 (${MAX_DAYS}일 기준)`]: MAX_DAYS - stat.totalDuration,
+                    '총 신청 횟수': stat.count,
+                    '최근 사용일': stat.records.length > 0 ? stat.records.sort((a,b) => b.startDate.localeCompare(a.startDate))[0].startDate : '기록 없음'
+                }));
+
                 const workbook = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(workbook, worksheet, "교외체험학습리스트");
+                
+                const worksheet1 = XLSX.utils.json_to_sheet(excelData);
+                XLSX.utils.book_append_sheet(workbook, worksheet1, "전체 기록 내역");
+                
+                const worksheet2 = XLSX.utils.json_to_sheet(statsData);
+                XLSX.utils.book_append_sheet(workbook, worksheet2, "학생별 누적 통계");
+
                 XLSX.writeFile(workbook, `교외체험학습_현황_${formatDate(new Date())}.xlsx`);
             };
 
@@ -179,7 +236,6 @@
                 return formatDate(date);
             };
 
-            // 보고 마감일 계산 (종료일 + 7일)
             const calculateReportDeadline = (endDateStr) => {
                 if (!endDateStr) return '';
                 let date = parseDate(endDateStr);
@@ -187,22 +243,16 @@
                 return formatDate(date);
             };
             
-            // 기간 계산 함수
             const calculateDuration = (start, end, time) => {
                 if (!start || !end) return 0;
                 const s = parseDate(start);
                 const e = parseDate(end);
                 
-                // 날짜 차이 계산 (밀리초 단위 -> 일 단위)
                 const diffTime = e.getTime() - s.getTime();
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // 시작일 포함이므로 +1
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
                 
                 if (diffDays <= 0) return 0;
-
-                // 시작 시간이 오후 12:20(12:20)인 경우 0.5일 차감
-                if (time === '12:20') {
-                    return diffDays - 0.5;
-                }
+                if (time === '12:20') return diffDays - 0.5;
                 return diffDays;
             };
 
@@ -218,23 +268,23 @@
                         nextForm.reportDeadline = calculateReportDeadline(value);
                     }
                 }
-                
                 if (name === 'endDate') {
                     nextForm.reportDeadline = calculateReportDeadline(value);
                 }
-
                 setForm(nextForm);
             };
 
             const addStudent = () => {
-                if (!form.name || !form.startDate || !form.endDate) return;
-                
+                if (!form.name || !form.startDate || !form.endDate) {
+                    alert('이름과 날짜를 모두 입력해주세요.');
+                    return;
+                }
                 const duration = calculateDuration(form.startDate, form.endDate, form.startTime);
                 
                 setStudents([...students, { 
                     ...form, 
                     id: Date.now(), 
-                    duration: duration, // 계산된 기간 저장
+                    duration: duration,
                     isNeisRequested: form.isNeisDone,
                     isAppReceived: false, 
                     isReportDone: false 
@@ -245,6 +295,7 @@
             const deleteStudent = (id) => {
                 setStudents(students.filter(s => s.id !== id));
                 setSelectedStudent(null);
+                setSelectedStudentStats(null);
             };
 
             const updateStudentInfo = (id, key, value) => {
@@ -282,158 +333,285 @@
                 return days;
             }, [viewDate]);
 
-            // 현재 폼 상태 기준으로 예상 기간 계산
             const previewDuration = calculateDuration(form.startDate, form.endDate, form.startTime);
 
             return (
-                <div className="h-screen flex flex-col overflow-hidden">
-                    <header className="bg-indigo-600 text-white p-4 shadow-lg flex justify-between items-center flex-none">
+                <div className="h-screen flex flex-col overflow-hidden bg-slate-50">
+                    <header className="bg-indigo-600 text-white p-4 shadow-md flex justify-between items-center flex-none z-10">
                         <div className="flex items-center gap-2 font-bold text-lg sm:text-xl">
                             <Icon name="graduation-cap" />
                             <span className="truncate">구영초 교외체험학습 매니저</span>
                         </div>
                         <button onClick={downloadExcel} className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs sm:text-sm font-bold transition shadow-md active:scale-95">
                             <Icon name="file-spreadsheet" size={16} />
-                            <span className="hidden xs:inline">다운로드</span>
+                            <span className="hidden xs:inline">엑셀 다운로드</span>
                         </button>
                     </header>
 
+                    {/* 탭 메뉴 */}
+                    <div className="bg-white border-b flex px-4 gap-1 sm:gap-4 shadow-sm z-10 overflow-x-auto scrollbar-hide">
+                        <button 
+                            onClick={() => setActiveTab('calendar')} 
+                            className={`py-3 px-2 font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'calendar' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+                            <Icon name="calendar-days" size={18} /> 일정 달력
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('students')} 
+                            className={`py-3 px-2 font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'students' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+                            <Icon name="users" size={18} /> 누적 명부
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('roster')} 
+                            className={`py-3 px-2 font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'roster' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+                            <Icon name="list-ordered" size={18} /> 명렬표 설정
+                        </button>
+                    </div>
+
+                    {/* 메인 콘텐츠 영역 */}
                     <main className="flex-1 main-container p-4">
-                        <div className="flex flex-col lg:flex-row gap-6 max-w-[1600px] mx-auto w-full">
-                            <aside className="w-full lg:w-80 flex flex-col gap-4 flex-none">
-                                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-                                    <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
-                                        <Icon name="plus-circle" className="text-indigo-600" />
-                                        <span>일정 추가</span>
-                                    </h2>
-                                    <div className="space-y-3">
-                                        <input name="name" value={form.name} onChange={handleFormChange} placeholder="학생 이름" className="w-full p-3 bg-slate-50 rounded-xl ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
-                                        <div className="grid grid-cols-1 gap-2">
-                                            <div>
-                                                <label className="text-[10px] text-slate-400 ml-1">시작일 및 시간</label>
-                                                <div className="flex gap-1">
-                                                    <input type="date" name="startDate" value={form.startDate} onChange={handleFormChange} className="flex-1 p-2 bg-slate-50 rounded-lg text-sm ring-1 ring-slate-200" />
-                                                    <select name="startTime" value={form.startTime} onChange={handleFormChange} className="w-28 p-2 bg-slate-50 rounded-lg text-xs font-bold ring-1 ring-slate-200">
-                                                        <option value="00:00">오전 00:00</option>
-                                                        <option value="12:20">오후 12:20</option>
-                                                    </select>
+                        
+                        {/* 탭 1: 달력 뷰 */}
+                        {activeTab === 'calendar' && (
+                            <div className="flex flex-col lg:flex-row gap-6 max-w-[1600px] mx-auto w-full h-full">
+                                <aside className="w-full lg:w-80 flex flex-col gap-4 flex-none">
+                                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                                        <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
+                                            <Icon name="plus-circle" className="text-indigo-600" />
+                                            <span>일정 추가</span>
+                                        </h2>
+                                        <div className="space-y-3">
+                                            {/* 학생 이름 입력 부분: 명렬표 유무에 따라 드롭다운 또는 인풋 표시 */}
+                                            {roster.length > 0 ? (
+                                                <select name="name" value={form.name} onChange={handleFormChange} className="w-full p-3 bg-slate-50 rounded-xl ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-bold text-slate-700">
+                                                    <option value="">학생을 선택하세요</option>
+                                                    {roster.map((name, idx) => (
+                                                        <option key={idx} value={name}>{idx + 1}번 {name}</option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                <input name="name" value={form.name} onChange={handleFormChange} placeholder="학생 이름 ('명렬표 설정' 탭 권장)" className="w-full p-3 bg-slate-50 rounded-xl ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
+                                            )}
+                                            
+                                            <div className="grid grid-cols-1 gap-2">
+                                                <div>
+                                                    <label className="text-[10px] text-slate-400 ml-1">시작일 및 시간</label>
+                                                    <div className="flex gap-1">
+                                                        <input type="date" name="startDate" value={form.startDate} onChange={handleFormChange} className="flex-1 p-2 bg-slate-50 rounded-lg text-sm ring-1 ring-slate-200" />
+                                                        <select name="startTime" value={form.startTime} onChange={handleFormChange} className="w-28 p-2 bg-slate-50 rounded-lg text-xs font-bold ring-1 ring-slate-200">
+                                                            <option value="00:00">오전 00:00</option>
+                                                            <option value="12:20">오후 12:20</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] text-slate-400 ml-1">종료일</label>
+                                                    <input type="date" name="endDate" value={form.endDate} onChange={handleFormChange} className="w-full p-2 bg-slate-50 rounded-lg text-sm ring-1 ring-slate-200" />
                                                 </div>
                                             </div>
-                                            <div>
-                                                <label className="text-[10px] text-slate-400 ml-1">종료일</label>
-                                                <input type="date" name="endDate" value={form.endDate} onChange={handleFormChange} className="w-full p-2 bg-slate-50 rounded-lg text-sm ring-1 ring-slate-200" />
+                                            
+                                            {form.startDate && form.endDate && (
+                                                <div className="text-center bg-indigo-50 p-2 rounded-lg text-indigo-700 text-sm font-bold border border-indigo-100">
+                                                    총 계산 기간: {previewDuration}일
+                                                </div>
+                                            )}
+
+                                            <input name="place" value={form.place} onChange={handleFormChange} placeholder="장소 및 내용" className="w-full p-3 bg-slate-50 rounded-xl ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                            
+                                            <label className="flex items-center gap-2 px-1 cursor-pointer">
+                                                <input type="checkbox" name="isNeisDone" checked={form.isNeisDone} onChange={handleFormChange} className="w-4 h-4 accent-indigo-600" />
+                                                <span className="text-sm font-bold text-slate-600">NEIS학부모서비스로 신청 </span>
+                                            </label>
+
+                                            <div className="grid grid-cols-2 gap-2 mt-2">
+                                                <div className="p-3 bg-red-50 rounded-xl border border-red-100 text-center">
+                                                    <div className="text-sm font-bold text-red-400 mb-1">신청 마감일</div>
+                                                    <div className="text-lg font-black text-red-600">{form.deadline || '-'}</div>
+                                                </div>
+                                                <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-center">
+                                                    <div className="text-sm font-bold text-blue-400 mb-1">보고 마감일</div>
+                                                    <div className="text-lg font-black text-blue-600">{form.reportDeadline || '-'}</div>
+                                                </div>
                                             </div>
+                                            <button onClick={addStudent} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition active:scale-95 shadow-md mt-2 flex justify-center items-center gap-2">
+                                                <Icon name="check" size={18} /> 일정 등록
+                                            </button>
                                         </div>
-                                        
-                                        {/* 기간 미리보기 표시 */}
-                                        {form.startDate && form.endDate && (
-                                            <div className="text-center bg-indigo-50 p-2 rounded-lg text-indigo-700 text-sm font-bold">
-                                                총 기간: {previewDuration}일
-                                            </div>
-                                        )}
-
-                                        <input name="place" value={form.place} onChange={handleFormChange} placeholder="장소 및 내용" className="w-full p-3 bg-slate-50 rounded-xl ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" />
-                                        
-                                        <label className="flex items-center gap-2 px-1 cursor-pointer">
-                                            <input type="checkbox" name="isNeisDone" checked={form.isNeisDone} onChange={handleFormChange} className="w-4 h-4 accent-indigo-600" />
-                                            <span className="text-sm font-bold text-slate-600">NEIS 신청</span>
-                                        </label>
-
-                                        <div className="grid grid-cols-2 gap-2 mt-2">
-                                            <div className="p-3 bg-red-50 rounded-xl border border-red-100 text-center">
-                                                {/* 요청 1: 글자 크기 2배 확대 (text-[9px] -> text-lg) */}
-                                                <div className="text-lg font-bold text-red-400 mb-1">신청 마감일</div>
-                                                <div className="text-2xl font-black text-red-600">{form.deadline || '-'}</div>
-                                            </div>
-                                            <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-center">
-                                                {/* 요청 1: 글자 크기 2배 확대 (text-[9px] -> text-lg) */}
-                                                <div className="text-lg font-bold text-blue-400 mb-1">보고 마감일</div>
-                                                <div className="text-2xl font-black text-blue-600">{form.reportDeadline || '-'}</div>
-                                            </div>
+                                    </div>
+                                    
+                                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col flex-1 min-h-[250px] max-h-[350px]">
+                                        <h2 className="font-bold text-lg mb-4 text-slate-700">최근 등록된 일정</h2>
+                                        <div className="overflow-y-auto space-y-2 pr-1 scrollbar-hide">
+                                            {students.length === 0 ? <p className="text-slate-400 text-center py-8 text-sm">등록된 일정이 없습니다.</p> :
+                                            [...students].reverse().map(s => (
+                                                <div key={s.id} onClick={() => setSelectedStudent(s)} className="p-3 bg-slate-50 rounded-xl border border-transparent hover:border-indigo-100 cursor-pointer transition">
+                                                    <div className="flex justify-between items-center">
+                                                        <div className="font-bold text-slate-700 text-sm">{s.name}</div>
+                                                        <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-600 font-bold">{s.duration}일</span>
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-500 font-medium mt-1">
+                                                        {s.startDate.slice(5)} ~ {s.endDate.slice(5)} ({s.startTime === '12:20' ? '오후' : '오전'})
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
-                                        <button onClick={addStudent} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition active:scale-95 shadow-md mt-2">일정 등록</button>
                                     </div>
-                                </div>
-                                
-                                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col max-h-[300px]">
-                                    <h2 className="font-bold text-lg mb-4">최근 등록</h2>
-                                    <div className="overflow-y-auto space-y-2 pr-1 scrollbar-hide">
-                                        {students.length === 0 ? <p className="text-slate-400 text-center py-8 text-sm">등록된 일정이 없습니다.</p> :
-                                        [...students].reverse().map(s => (
-                                            <div key={s.id} onClick={() => setSelectedStudent(s)} className="p-3 bg-slate-50 rounded-xl border border-transparent hover:border-indigo-100 cursor-pointer transition">
-                                                <div className="flex justify-between items-center">
-                                                    <div className="font-bold text-slate-700 text-sm">{s.name}</div>
-                                                    <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 font-bold">{s.duration}일</span>
-                                                </div>
-                                                <div className="text-[11px] text-slate-400 font-medium mt-1">
-                                                    {s.startDate.slice(5)} ~ {s.endDate.slice(5)} ({s.startTime === '12:20' ? '오후' : '오전'})
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </aside>
+                                </aside>
 
-                            <section className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
-                                <div className="p-4 border-b flex justify-between items-center bg-slate-50 flex-none">
-                                    <div className="flex items-center gap-2">
-                                        <h2 className="text-lg sm:text-xl font-black">{viewDate.getFullYear()}년 {viewDate.getMonth() + 1}월</h2>
-                                        <button onClick={() => setIsHolidayModalOpen(true)} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg transition"><Icon name="settings" size={18} /></button>
+                                <section className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
+                                    <div className="p-4 border-b flex justify-between items-center bg-slate-50 flex-none">
+                                        <div className="flex items-center gap-2">
+                                            <h2 className="text-lg sm:text-2xl font-black text-slate-800">{viewDate.getFullYear()}년 {viewDate.getMonth() + 1}월</h2>
+                                            <button onClick={() => setIsHolidayModalOpen(true)} className="p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 rounded-lg transition" title="학사일정 설정">
+                                                <Icon name="settings" size={18} />
+                                            </button>
+                                        </div>
+                                        <div className="flex gap-1">
+                                            <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} className="p-2 hover:bg-white rounded-lg border transition text-slate-600"><Icon name="chevron-left" size={16}/></button>
+                                            <button onClick={() => setViewDate(new Date())} className="px-3 text-sm font-bold border rounded-lg hover:bg-white text-slate-700">오늘</button>
+                                            <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} className="p-2 hover:bg-white rounded-lg border transition text-slate-600"><Icon name="chevron-right" size={16}/></button>
+                                        </div>
                                     </div>
-                                    <div className="flex gap-1">
-                                        <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} className="p-2 hover:bg-white rounded-lg border transition"><Icon name="chevron-left" size={16}/></button>
-                                        <button onClick={() => setViewDate(new Date())} className="px-3 text-sm font-bold border rounded-lg hover:bg-white">오늘</button>
-                                        <button onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} className="p-2 hover:bg-white rounded-lg border transition"><Icon name="chevron-right" size={16}/></button>
-                                    </div>
-                                </div>
-                                
-                                <div className="calendar-wrapper flex-1">
-                                    <div className="grid grid-cols-7 text-center py-3 bg-slate-50 font-bold text-slate-400 border-b min-w-[700px]">
-                                        {['일','월','화','수','목','금','토'].map((d, i) => (
-                                            <div key={d} className={i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : ''}>{d}</div>
-                                        ))}
-                                    </div>
-                                    <div className="calendar-grid">
-                                        {calendarDays.map((day, idx) => {
-                                            const dStr = formatDate(day.date);
-                                            const dayHolidays = holidays.filter(h => h.date === dStr);
-                                            const dayEvents = students.filter(s => dStr >= s.startDate && dStr <= s.endDate);
-                                            const isSun = day.date.getDay() === 0;
-                                            const isSat = day.date.getDay() === 6;
-                                            const isHoliday = dayHolidays.length > 0;
-                                            return (
-                                                <div key={idx} className={`calendar-cell ${!day.current ? 'opacity-30' : ''}`}>
-                                                    <div className="flex justify-between items-start mb-1">
-                                                        <span className={`text-sm sm:text-base font-bold ${(isSun || isHoliday) ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-slate-600'}`}>
-                                                            {day.date.getDate()}
-                                                        </span>
-                                                        <div className="flex flex-col items-end gap-0.5">
-                                                            {dayHolidays.map(h => (
-                                                                <span key={h.id} className={`text-[9px] px-1 py-0.5 rounded font-bold truncate max-w-[60px] ${h.name.includes('재량') ? 'bg-orange-100 text-orange-600' : 'bg-red-100 text-red-600'}`}>
-                                                                    {h.name}
-                                                                </span>
+                                    
+                                    <div className="calendar-wrapper flex-1">
+                                        <div className="grid grid-cols-7 text-center py-3 bg-slate-50 font-bold text-slate-400 border-b min-w-[700px]">
+                                            {['일','월','화','수','목','금','토'].map((d, i) => (
+                                                <div key={d} className={i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : ''}>{d}</div>
+                                            ))}
+                                        </div>
+                                        <div className="calendar-grid h-full">
+                                            {calendarDays.map((day, idx) => {
+                                                const dStr = formatDate(day.date);
+                                                const dayHolidays = holidays.filter(h => h.date === dStr);
+                                                const dayEvents = students.filter(s => dStr >= s.startDate && dStr <= s.endDate);
+                                                const isSun = day.date.getDay() === 0;
+                                                const isSat = day.date.getDay() === 6;
+                                                const isHoliday = dayHolidays.length > 0;
+                                                return (
+                                                    <div key={idx} className={`calendar-cell ${!day.current ? 'opacity-30 bg-slate-50' : ''}`}>
+                                                        <div className="flex justify-between items-start mb-1">
+                                                            <span className={`text-sm sm:text-base font-bold ${(isSun || isHoliday) ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-slate-600'}`}>
+                                                                {day.date.getDate()}
+                                                            </span>
+                                                            <div className="flex flex-col items-end gap-0.5">
+                                                                {dayHolidays.map(h => (
+                                                                    <span key={h.id} className={`text-[10px] px-1 py-0.5 rounded font-bold truncate max-w-[60px] ${h.name.includes('재량') ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-600'}`}>
+                                                                        {h.name}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            {dayEvents.map(e => (
+                                                                <div key={e.id} onClick={() => setSelectedStudent(e)} className={`text-[11px] p-1 border rounded font-bold truncate cursor-pointer transition shadow-sm hover:ring-1 hover:ring-indigo-300 ${e.isReportDone ? 'bg-green-100 text-green-800 border-green-200' : e.isAppReceived ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-white text-slate-600 border-slate-200'}`}>
+                                                                    {e.name}
+                                                                </div>
                                                             ))}
                                                         </div>
                                                     </div>
-                                                    <div className="space-y-1">
-                                                        {dayEvents.map(e => (
-                                                            <div key={e.id} onClick={() => setSelectedStudent(e)} className={`text-[11px] p-1 border rounded font-bold truncate cursor-pointer transition shadow-sm ${e.isReportDone ? 'bg-green-100 text-green-800' : e.isAppReceived ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-50 text-slate-600'}`}>
-                                                                {e.name}
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </section>
+                            </div>
+                        )}
+
+                        {/* 탭 2: 학생 명부 뷰 */}
+                        {activeTab === 'students' && (
+                            <div className="max-w-[1200px] mx-auto w-full pb-8">
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                                    <div className="p-4 sm:p-6 border-b bg-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                        <div>
+                                            <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800">
+                                                <Icon name="file-bar-chart" className="text-indigo-600" />
+                                                <span>학생별 체험학습 누적 명부</span>
+                                            </h2>
+                                            <p className="text-sm text-slate-500 mt-1">
+                                                달력에 등록된 일정을 바탕으로 자동으로 일수가 합산됩니다. 상세 기록을 보려면 행을 클릭하세요.
+                                            </p>
+                                        </div>
+                                        <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2 text-sm text-indigo-800 font-medium">
+                                            연간 규정 일수: <span className="font-bold text-lg">{MAX_DAYS}일</span> 기준
+                                        </div>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse min-w-[600px]">
+                                            <thead>
+                                                <tr className="bg-white border-b border-slate-200 text-slate-500 text-sm">
+                                                    <th className="p-4 font-bold">학생 이름</th>
+                                                    <th className="p-4 font-bold">총 사용 일수</th>
+                                                    <th className="p-4 font-bold">잔여 일수</th>
+                                                    <th className="p-4 font-bold">신청 횟수</th>
+                                                    <th className="p-4 font-bold">최근 체험학습일</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {studentStats.length === 0 ? (
+                                                    <tr><td colSpan="5" className="p-10 text-center text-slate-400">데이터가 없습니다. '명렬표 설정' 탭에서 이름을 추가해보세요.</td></tr>
+                                                ) : studentStats.map(stat => {
+                                                    const remaining = MAX_DAYS - stat.totalDuration;
+                                                    const isWarning = remaining <= 5;
+                                                    
+                                                    return (
+                                                        <tr key={stat.name} onClick={() => setSelectedStudentStats(stat)} className="border-b border-slate-100 hover:bg-slate-50 transition cursor-pointer">
+                                                            <td className="p-4">
+                                                                <span className="font-bold text-slate-800 text-base">
+                                                                    {stat.number !== 999 && <span className="text-slate-400 font-medium mr-2 text-sm">{stat.number}.</span>}
+                                                                    {stat.name}
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-4">
+                                                                <span className="font-black text-indigo-600 text-lg">{stat.totalDuration}</span>
+                                                                <span className="text-slate-500 text-sm ml-1">일</span>
+                                                            </td>
+                                                            <td className="p-4">
+                                                                <span className={`font-bold px-2 py-1 rounded-lg ${remaining < 0 ? 'bg-red-600 text-white' : isWarning ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'}`}>
+                                                                    {remaining}일
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-4 text-slate-600 font-medium">{stat.count}회</td>
+                                                            <td className="p-4 text-sm text-slate-500">
+                                                                {stat.records.length > 0 ? stat.records.sort((a,b) => b.startDate.localeCompare(a.startDate))[0].startDate : '-'}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
-                            </section>
-                        </div>
-                        <footer className="p-6 text-center text-slate-400 text-xs font-medium">
-                            <p>© 2026. Appro Lee. All rights reserved.</p>
-                        </footer>
+                            </div>
+                        )}
+
+                        {/* 탭 3: 명렬표 초기 세팅 뷰 */}
+                        {activeTab === 'roster' && (
+                            <div className="max-w-[800px] mx-auto w-full pb-8">
+                                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
+                                    <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800 mb-2">
+                                        <Icon name="list-ordered" className="text-indigo-600" />
+                                        <span>학생 명렬표 초기 설정</span>
+                                    </h2>
+                                    <p className="text-sm text-slate-500 mb-6">
+                                        우리 반 학생 이름을 번호순으로 <strong className="text-indigo-600">한 줄에 한 명씩</strong> 입력해주세요. <br/>
+                                        명렬표를 미리 등록해두면 일정 추가 시 목록에서 편리하게 선택할 수 있으며, 누적 명부에 전체 학생이 번호순으로 기본 표시됩니다.
+                                    </p>
+                                    <textarea 
+                                        value={rosterInput}
+                                        onChange={(e) => setRosterInput(e.target.value)}
+                                        placeholder="예시)&#10;김철수&#10;이영희&#10;박민수"
+                                        className="w-full h-80 p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 mb-4 resize-none text-base"
+                                    ></textarea>
+                                    <button onClick={handleSaveRoster} className="w-full py-4 bg-indigo-600 text-white font-bold rounded-xl active:scale-95 transition shadow-md flex justify-center items-center gap-2">
+                                        <Icon name="save" size={18} />
+                                        명렬표 저장 및 반영
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        
                     </main>
 
+                    {/* [모달 1] 캘린더에서 개별 일정 클릭 시 상세 모달 */}
                     {selectedStudent && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-bg">
                             <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl overflow-y-auto max-h-[90vh]">
@@ -456,19 +634,19 @@
                                     </div>
                                     
                                     <div className="grid grid-cols-2 gap-2">
-                                        <div className="p-3 bg-red-50 rounded-xl border border-red-100">
-                                            <div className="text-[10px] font-bold text-red-400">신청 마감일</div>
-                                            <div className="font-black text-red-600 text-sm sm:text-base">{selectedStudent.deadline}</div>
+                                        <div className="p-3 bg-red-50 rounded-xl border border-red-100 text-center">
+                                            <div className="text-sm font-bold text-red-400 mb-1">신청 마감일</div>
+                                            <div className="font-black text-red-600 text-lg">{selectedStudent.deadline}</div>
                                         </div>
-                                        <div className="p-3 bg-blue-50 rounded-xl border border-blue-100">
-                                            <div className="text-[10px] font-bold text-blue-400">보고 마감일</div>
-                                            <div className="font-black text-blue-600 text-sm sm:text-base">{selectedStudent.reportDeadline}</div>
+                                        <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-center">
+                                            <div className="text-sm font-bold text-blue-400 mb-1">보고 마감일</div>
+                                            <div className="font-black text-blue-600 text-lg">{selectedStudent.reportDeadline}</div>
                                         </div>
                                     </div>
 
                                     {selectedStudent.isNeisRequested && (
                                         <label className={`flex items-center justify-between p-4 rounded-xl border transition ${selectedStudent.isNeisDone ? 'bg-yellow-100 text-yellow-800 border-yellow-200' : 'bg-slate-50 border-transparent opacity-60'} ${selectedStudent.isAppReceived ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                                            <span className="font-bold text-sm">NEIS 신청</span>
+                                            <span className="font-bold text-sm">NEIS 결재 완료</span>
                                             <input 
                                                 type="checkbox" 
                                                 checked={selectedStudent.isNeisDone} 
@@ -480,7 +658,7 @@
                                     )}
 
                                     <label className={`flex items-center justify-between p-4 rounded-xl border transition ${selectedStudent.isAppReceived ? 'bg-indigo-50 text-indigo-800 border-indigo-200' : 'bg-slate-50 border-transparent opacity-60'} ${(selectedStudent.isNeisRequested && !selectedStudent.isNeisDone) || selectedStudent.isReportDone ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                                        <span className="font-bold text-sm">신청서 접수 완료</span>
+                                        <span className="font-bold text-sm">신청 접수 완료</span>
                                         <input 
                                             type="checkbox" 
                                             checked={selectedStudent.isAppReceived} 
@@ -502,36 +680,99 @@
                                     </label>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <button onClick={() => deleteStudent(selectedStudent.id)} className="py-3 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-100 transition">기록 삭제</button>
+                                    <button onClick={() => deleteStudent(selectedStudent.id)} className="py-3 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-100 transition flex items-center justify-center gap-1">
+                                        <Icon name="trash-2" size={16} /> 삭제
+                                    </button>
                                     <button onClick={() => setSelectedStudent(null)} className="py-3 bg-slate-900 text-white font-bold rounded-xl active:scale-95 transition">닫기</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
+                    {/* [모달 2] 명부에서 특정 학생 클릭 시 누적 기록 상세 모달 */}
+                    {selectedStudentStats && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-bg">
+                            <div className="bg-white rounded-3xl w-full max-w-lg p-6 shadow-2xl overflow-y-auto max-h-[90vh] flex flex-col">
+                                <div className="flex justify-between items-start mb-6">
+                                    <div className="flex-1">
+                                        <h3 className="text-2xl font-black text-slate-800">{selectedStudentStats.name} <span className="text-lg text-slate-500 font-medium">체험학습 기록</span></h3>
+                                        <div className="mt-2 flex gap-2">
+                                            <span className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-lg text-sm font-bold">누적: {selectedStudentStats.totalDuration}일</span>
+                                            <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold">잔여: {MAX_DAYS - selectedStudentStats.totalDuration}일</span>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setSelectedStudentStats(null)} className="p-2 hover:bg-slate-100 rounded-full transition"><Icon name="x" /></button>
+                                </div>
+                                
+                                <div className="flex-1 overflow-y-auto space-y-3 mb-6 pr-2 scrollbar-hide">
+                                    {selectedStudentStats.records.length === 0 ? (
+                                        <div className="text-center py-10 text-slate-400 font-medium bg-slate-50 rounded-2xl border border-slate-200">
+                                            체험학습을 다녀온 기록이 없습니다.
+                                        </div>
+                                    ) : (
+                                        selectedStudentStats.records.sort((a,b) => b.startDate.localeCompare(a.startDate)).map(record => (
+                                            <div key={record.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl relative">
+                                                <button 
+                                                    onClick={() => deleteStudent(record.id)} 
+                                                    className="absolute top-4 right-4 text-slate-400 hover:text-red-500 transition"
+                                                    title="이 기록 삭제"
+                                                >
+                                                    <Icon name="trash-2" size={16} />
+                                                </button>
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <span className="text-xs font-black bg-white border border-slate-200 text-slate-700 px-2 py-1 rounded-md shadow-sm">
+                                                        {record.duration}일
+                                                    </span>
+                                                    <span className="text-sm font-bold text-slate-600">
+                                                        {record.startDate.slice(5)} ~ {record.endDate.slice(5)}
+                                                    </span>
+                                                </div>
+                                                <div className="text-base font-bold text-slate-800">{record.place}</div>
+                                                <div className="mt-3 flex gap-2">
+                                                    <span className={`text-[10px] px-2 py-1 rounded font-bold ${record.isAppReceived ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-500'}`}>신청서 {record.isAppReceived ? '완료' : '미제출'}</span>
+                                                    <span className={`text-[10px] px-2 py-1 rounded font-bold ${record.isReportDone ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-500'}`}>보고서 {record.isReportDone ? '완료' : '미제출'}</span>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                                <button onClick={() => setSelectedStudentStats(null)} className="w-full py-3.5 bg-slate-900 text-white font-bold rounded-xl active:scale-95 transition text-lg shadow-lg">닫기</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* [모달 3] 학사 일정 편집 모달 */}
                     {isHolidayModalOpen && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-bg">
                             <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl flex flex-col max-h-[80vh]">
                                 <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-xl font-bold">학사 일정 편집</h3>
+                                    <h3 className="text-xl font-bold flex items-center gap-2"><Icon name="calendar" className="text-indigo-600"/>학사 일정 편집</h3>
                                     <button onClick={() => setIsHolidayModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition"><Icon name="x" /></button>
                                 </div>
-                                <div className="flex flex-col gap-2 mb-4">
+                                <p className="text-xs text-slate-500 mb-4">재량휴업일이나 개교기념일을 추가하면 신청 마감일 계산 시 주말과 함께 제외됩니다.</p>
+                                <div className="flex flex-col gap-2 mb-6 bg-slate-50 p-3 rounded-xl border border-slate-200">
                                     <div className="flex gap-2">
-                                        <input placeholder="행사명" value={newHoliday.name} onChange={e => setNewHoliday({...newHoliday, name: e.target.value})} className="flex-1 p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500" />
-                                        <input type="date" value={newHoliday.date} onChange={e => setNewHoliday({...newHoliday, date: e.target.value})} className="p-2 bg-slate-50 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500" />
+                                        <input placeholder="행사명 (예: 개교기념일)" value={newHoliday.name} onChange={e => setNewHoliday({...newHoliday, name: e.target.value})} className="flex-1 p-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-indigo-500" />
+                                        <input type="date" value={newHoliday.date} onChange={e => setNewHoliday({...newHoliday, date: e.target.value})} className="p-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-indigo-500" />
                                     </div>
-                                    <button onClick={addHoliday} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-bold active:scale-95 transition">일정 추가</button>
+                                    <button onClick={addHoliday} className="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-bold hover:bg-indigo-700 transition active:scale-95 flex justify-center items-center gap-1">
+                                        <Icon name="plus" size={16} /> 추가하기
+                                    </button>
                                 </div>
-                                <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-hide">
+                                <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-hide border-t pt-4">
                                     {holidays.sort((a,b) => a.date.localeCompare(b.date)).map(h => (
-                                        <div key={h.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border">
-                                            <div><div className="font-bold text-slate-700 text-sm">{h.name}</div><div className="text-[10px] text-slate-400">{h.date}</div></div>
-                                            <button onClick={() => deleteHoliday(h.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition"><Icon name="trash-2" size={16} /></button>
+                                        <div key={h.id} className="flex justify-between items-center p-3 bg-white hover:bg-slate-50 rounded-xl border border-slate-200 transition">
+                                            <div>
+                                                <div className="font-bold text-slate-700 text-sm">{h.name}</div>
+                                                <div className="text-[11px] font-medium text-slate-400 mt-0.5">{h.date}</div>
+                                            </div>
+                                            <button onClick={() => deleteHoliday(h.id)} className="p-2 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition">
+                                                <Icon name="trash-2" size={18} />
+                                            </button>
                                         </div>
                                     ))}
                                 </div>
-                                <button onClick={() => setIsHolidayModalOpen(false)} className="mt-4 py-3 bg-slate-900 text-white font-bold rounded-xl shadow-lg active:scale-95 transition">확인</button>
+                                <button onClick={() => setIsHolidayModalOpen(false)} className="mt-4 py-3.5 bg-slate-900 text-white font-bold rounded-xl shadow-lg active:scale-95 transition text-lg">닫기</button>
                             </div>
                         </div>
                     )}
@@ -543,5 +784,3 @@
     </script>
 </body>
 </html>
-
-
